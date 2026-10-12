@@ -1,11 +1,21 @@
-"""Envoltorio ctypes mínimo y rápido sobre la API "por proyecto" de EPANET 2.2/2.3.
+"""Envoltorio ctypes mínimo y rápido sobre la API "por proyecto" de EPANET 2.2
+(compatible también con 2.3).
 
-Se usa la biblioteca nativa (libepanet2.so / epanet2.dll / libepanet2.dylib).
-La ruta se resuelve, por orden:
-  1. argumento ``lib_path``
+La versión por defecto es **EPANET 2.2**. La biblioteca nativa se busca, por orden:
+  1. argumento ``lib_path`` (``epanet_lib`` en la configuración)
   2. variable de entorno ``EPANET_LIB``
-  3. la copia que trae el paquete ``epyt`` (pip install epyt)
+  3. según la versión pedida (``epanet_version``: "2.2" | "2.3" | "auto"):
+       2.2 -> la copia que trae ``wntr``  (pip install wntr: epanet22.dll/.so/.dylib)
+       2.3 -> la copia que trae ``epyt``  (pip install epyt)
   4. el nombre genérico del sistema (``epanet2``)
+
+Diferencias que se resuelven aquí para que el resto del código sea igual con
+ambas versiones:
+  * 2.2 no tiene EN_getnodevalues/EN_getlinkvalues -> bucle por elemento.
+  * 2.2 no tiene EN_EMITTERFLOW/EN_DEMANDFLOW -> el caudal de emisor se calcula
+    como K·signo(p)·|p|^γ y el consumo como EN_DEMAND − emisor (en 2.2
+    EN_DEMAND incluye el caudal de emisor).
+  * Las fugas FAVAD por tubería (EN_LEAK_AREA) sólo existen en 2.3.
 
 Cada ``EpanetProject`` mantiene el modelo abierto en memoria: las simulaciones
 repetidas (miles en una calibración) sólo cambian parámetros y vuelven a
@@ -108,40 +118,60 @@ class EpanetError(RuntimeError):
     pass
 
 
-def _find_library(lib_path: Optional[str] = None) -> str:
+def _lib_from_package(version: str) -> Optional[str]:
+    system = platform.system()
+    if version == "2.2":
+        try:
+            import wntr  # type: ignore
+        except ImportError:
+            return None
+        base = os.path.join(os.path.dirname(wntr.__file__), "epanet", "libepanet")
+        cand = {"Windows": os.path.join(base, "windows-x64", "epanet22.dll"),
+                "Darwin": os.path.join(base, "darwin-x64", "libepanet22.dylib")}.get(
+            system, os.path.join(base, "linux-x64", "libepanet22.so"))
+        if system == "Darwin" and platform.machine() == "arm64":
+            arm = os.path.join(base, "darwin-arm", "libepanet22.dylib")
+            cand = arm if os.path.exists(arm) else cand
+    else:
+        try:
+            import epyt  # type: ignore
+        except ImportError:
+            return None
+        base = os.path.join(os.path.dirname(epyt.__file__), "libraries")
+        cand = {"Windows": os.path.join(base, "win", "epanet2.dll"),
+                "Darwin": os.path.join(base, "mac", "libepanet2.dylib")}.get(
+            system, os.path.join(base, "glnx", "libepanet2.so"))
+    return cand if os.path.exists(cand) else None
+
+
+def _find_library(lib_path: Optional[str] = None, version: Optional[str] = None) -> str:
     if lib_path:
         return lib_path
     env = os.environ.get("EPANET_LIB")
     if env:
         return env
-    try:
-        import epyt  # type: ignore
-
-        base = os.path.join(os.path.dirname(epyt.__file__), "libraries")
-        system = platform.system()
-        if system == "Windows":
-            cand = os.path.join(base, "win", "epanet2.dll")
-        elif system == "Darwin":
-            cand = os.path.join(base, "mac", "libepanet2.dylib")
-        else:
-            cand = os.path.join(base, "glnx", "libepanet2.so")
-        if os.path.exists(cand):
-            return cand
-    except ImportError:
-        pass
-    found = ctypes.util.find_library("epanet2") or ctypes.util.find_library("epanet")
+    version = str(version or os.environ.get("EPANET_VERSION", "2.2")).lower()
+    order = {"2.2": ["2.2"], "2.3": ["2.3"], "auto": ["2.2", "2.3"]}.get(version)
+    if order is None:
+        raise EpanetError(f"epanet_version no válida: {version} (use 2.2, 2.3 o auto)")
+    for v in order:
+        found = _lib_from_package(v)
+        if found:
+            return found
+    found = ctypes.util.find_library("epanet22") or ctypes.util.find_library("epanet2")
     if found:
         return found
     raise EpanetError(
-        "No se encontró la biblioteca de EPANET. Instale 'epyt' (pip install epyt) "
-        "o defina la variable de entorno EPANET_LIB con la ruta a epanet2.dll/.so")
+        f"No se encontró la biblioteca de EPANET {version}. Para EPANET 2.2 instale "
+        "'wntr' (pip install wntr), o defina EPANET_LIB / 'epanet_lib' con la ruta a "
+        "epanet2.dll (64 bits) / libepanet2.so")
 
 
 _LIB_CACHE: Dict[str, ctypes.CDLL] = {}
 
 
-def load_library(lib_path: Optional[str] = None) -> ctypes.CDLL:
-    path = _find_library(lib_path)
+def load_library(lib_path: Optional[str] = None, version: Optional[str] = None) -> ctypes.CDLL:
+    path = _find_library(lib_path, version)
     if path not in _LIB_CACHE:
         if sys.platform.startswith("win"):
             lib = ctypes.WinDLL(path)  # convención stdcall en Windows
@@ -155,8 +185,12 @@ class EpanetProject:
     """Proyecto EPANET abierto en memoria."""
 
     def __init__(self, inp_file: str, lib_path: Optional[str] = None,
-                 rpt_file: str = "", out_file: str = ""):
-        self.lib = load_library(lib_path)
+                 rpt_file: str = "", out_file: str = "", version: Optional[str] = None):
+        self.lib = load_library(lib_path, version)
+        v = ctypes.c_int()
+        self.lib.EN_getversion(ctypes.byref(v))
+        self.version = v.value                       # 20200, 20300, ...
+        self.has_bulk = hasattr(self.lib, "EN_getnodevalues")
         self.inp_file = inp_file
         self.ph = ctypes.c_void_p()
         self._chk(self.lib.EN_createproject(ctypes.byref(self.ph)))
@@ -170,6 +204,8 @@ class EpanetProject:
         self.n_nodes = self.count(EN_NODECOUNT)
         self.n_links = self.count(EN_LINKCOUNT)
         self._nbuf = (ctypes.c_double * self.n_nodes)()
+        self.is_junction = np.array([self.node_type(i) == EN_JUNCTION
+                                     for i in range(1, self.n_nodes + 1)])
         self._lbuf = (ctypes.c_double * self.n_links)()
 
     # ------------------------------------------------------------------ util
@@ -266,12 +302,66 @@ class EpanetProject:
 
     def node_values(self, prop: int) -> np.ndarray:
         """Valores de todos los nodos (orden de índice 1..N) en un vector."""
-        self._chk(self.lib.EN_getnodevalues(self.ph, prop, self._nbuf))
-        return np.frombuffer(self._nbuf, dtype=np.float64).copy()
+        if self.has_bulk:
+            self._chk(self.lib.EN_getnodevalues(self.ph, prop, self._nbuf))
+            return np.frombuffer(self._nbuf, dtype=np.float64).copy()
+        v = ctypes.c_double()
+        out = np.empty(self.n_nodes)
+        get, ph, ref = self.lib.EN_getnodevalue, self.ph, ctypes.byref(v)
+        for i in range(self.n_nodes):
+            get(ph, i + 1, prop, ref)
+            out[i] = v.value
+        return out
 
     def link_values(self, prop: int) -> np.ndarray:
-        self._chk(self.lib.EN_getlinkvalues(self.ph, prop, self._lbuf))
-        return np.frombuffer(self._lbuf, dtype=np.float64).copy()
+        if self.has_bulk:
+            self._chk(self.lib.EN_getlinkvalues(self.ph, prop, self._lbuf))
+            return np.frombuffer(self._lbuf, dtype=np.float64).copy()
+        v = ctypes.c_double()
+        out = np.empty(self.n_links)
+        get, ph, ref = self.lib.EN_getlinkvalue, self.ph, ctypes.byref(v)
+        for i in range(self.n_links):
+            get(ph, i + 1, prop, ref)
+            out[i] = v.value
+        return out
+
+    def node_values_at(self, prop: int, idx1: np.ndarray) -> np.ndarray:
+        """Valores de un subconjunto de nodos (índices EPANET 1-based)."""
+        if self.has_bulk:
+            return self.node_values(prop)[np.asarray(idx1) - 1]
+        v = ctypes.c_double()
+        out = np.empty(len(idx1))
+        get, ph, ref = self.lib.EN_getnodevalue, self.ph, ctypes.byref(v)
+        for k, i in enumerate(idx1):
+            get(ph, int(i), prop, ref)
+            out[k] = v.value
+        return out
+
+    # ---- magnitudes de resultados independientes de la versión
+    def emitter_flows(self, coef: Optional[np.ndarray] = None,
+                      pressure: Optional[np.ndarray] = None) -> np.ndarray:
+        """Caudal de emisor de cada nodo en el instante actual."""
+        if self.version >= 20300:
+            return self.node_values(EN_EMITTERFLOW)
+        coef = self.node_values(EN_EMITTER) if coef is None else coef
+        p = self.node_values(EN_PRESSURE) if pressure is None else pressure
+        gamma = self.get_option(EN_EMITEXPON)
+        return np.where((coef > 0) & self.is_junction,
+                        coef * np.sign(p) * np.abs(p) ** gamma, 0.0)
+
+    def leakage_flows(self) -> np.ndarray:
+        """Fugas FAVAD de tuberías asignadas a nodos (0 en EPANET 2.2)."""
+        if self.version >= 20300:
+            return self.node_values(EN_LEAKAGEFLOW)
+        return np.zeros(self.n_nodes)
+
+    def consumer_demands(self, emitter: Optional[np.ndarray] = None) -> np.ndarray:
+        """Consumo de abonados servido (sin emisores ni fugas)."""
+        if self.version >= 20300:
+            return self.node_values(EN_DEMANDFLOW)
+        emitter = self.emitter_flows() if emitter is None else emitter
+        # en 2.2 EN_DEMAND de embalses/depósitos es su caudal aportado (negativo)
+        return np.where(self.is_junction, self.node_values(EN_DEMAND) - emitter, 0.0)
 
     def get_time(self, param: int) -> int:
         v = ctypes.c_long()
@@ -392,8 +482,8 @@ class EpanetProject:
         self._chk(self.lib.EN_saveinpfile(self.ph, path.encode()), f"(guardar {path})")
 
 
-def library_version(lib_path: Optional[str] = None) -> int:
-    lib = load_library(lib_path)
+def library_version(lib_path: Optional[str] = None, version: Optional[str] = None) -> int:
+    lib = load_library(lib_path, version)
     v = ctypes.c_int()
     lib.EN_getversion(ctypes.byref(v))
     return v.value

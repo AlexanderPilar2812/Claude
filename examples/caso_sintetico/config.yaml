@@ -6,6 +6,8 @@ name: Cal_Sintetico
 inp: modelo_inicial.inp
 output_dir: resultados
 workers: 0                 # 0 = todos los núcleos menos uno
+epanet_version: "2.2"      # 2.2 (por defecto) | 2.3 | auto
+# epanet_lib: C:/ruta/epanet2.dll   # opcional: biblioteca concreta (64 bits)
 
 # ---------------------------------------------------------------------
 # FAMILIAS (grupos de elementos que comparten un parámetro)
@@ -38,7 +40,7 @@ observations:
 # CALIBRACIÓN DE PÉRDIDAS
 # ---------------------------------------------------------------------
 losses:
-  method: emitters              # emitters (como Giswater) | pipe_leakage (FAVAD, EPANET 2.3)
+  method: emitters              # emitters (EPANET 2.2 y 2.3) | pipe_leakage (sólo EPANET 2.3)
   emitter_exponent: 0.5         # N1
   allocation: length            # length | uniform | demand | file
   allocation_factors:           # más fuga en familias peores
@@ -66,6 +68,9 @@ hydraulic:
   optimizer: {pop_size: 32, n_gen: 25, seed: 1, stall_gens: 8}
   selection: knee               # knee | topsis | weighted
   local_search: {enabled: true, max_iter: 10}
+  # Mantiene el objetivo de pérdidas para CADA rugosidad candidata (re-equilibra
+  # emisores y patrón): evita que la calibración hidráulica deshaga la de pérdidas
+  loss_balance: {enabled: true, n_inner: 2}
 
 # Reglas de aceptación (equivalentes a las de Giswater)
 acceptance:
@@ -75,4 +80,4 @@ acceptance:
 
 workflow:
   mode: full                    # full | losses | hydraulic
-  coupled_rounds: 2             # pérdidas -> hidráulica -> pérdidas -> hidráulica
+  coupled_rounds: 1             # con el balance embebido basta 1 ronda (2 = repetir pérdidas -> hidráulica)

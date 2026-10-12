@@ -149,8 +149,9 @@ def simulate_truth(inp, sensors_p, sensors_q, step=300):
             P[s].append(prj.get_node(i, en.EN_PRESSURE))
         for s, i in qi.items():
             Q[s].append(abs(prj.get_link(i, en.EN_FLOW)))
-        leak.append(prj.node_values(en.EN_EMITTERFLOW).sum())
-        dem.append(prj.node_values(en.EN_FULLDEMAND).sum())
+        e = prj.emitter_flows()
+        leak.append(e.sum())
+        dem.append(prj.consumer_demands(e).sum())
 
     prj.run_eps(step, cb)
     prj.close()

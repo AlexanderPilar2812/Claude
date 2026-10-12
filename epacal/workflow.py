@@ -28,8 +28,10 @@ def _abs(base_dir, p):
 
 
 def run(config_path: str, mode: Optional[str] = None, out_dir: Optional[str] = None,
-        log: Callable[[str], None] = print) -> dict:
+        log: Callable[[str], None] = print, epanet_version: Optional[str] = None) -> dict:
     cfg = load_config(config_path)
+    if epanet_version:
+        cfg["epanet_version"] = epanet_version
     base_dir = os.path.dirname(os.path.abspath(config_path))
     out_dir = _abs(base_dir, out_dir or cfg.get("output_dir", "resultados"))
     os.makedirs(out_dir, exist_ok=True)
@@ -43,6 +45,13 @@ def run(config_path: str, mode: Optional[str] = None, out_dir: Optional[str] = N
                     sel["ids_file"] = _abs(base_dir, sel["ids_file"])
         if isinstance(cfg.get(sec), dict) and "file" in cfg[sec]:
             cfg[sec]["file"] = _abs(base_dir, cfg[sec]["file"])
+
+    # biblioteca EPANET: se resuelve una vez y se pasa a todos los procesos
+    from . import engine as en
+    cfg["epanet_lib"] = en._find_library(_abs(base_dir, cfg.get("epanet_lib")),
+                                         str(cfg.get("epanet_version", "2.2")))
+    ver = en.library_version(cfg["epanet_lib"])
+    log(f"EPANET {ver // 10000}.{ver // 100 % 100} ({cfg['epanet_lib']})")
 
     wf = cfg.get("workflow", {})
     mode = (mode or wf.get("mode", "full")).lower()
@@ -62,6 +71,8 @@ def run(config_path: str, mode: Optional[str] = None, out_dir: Optional[str] = N
             current = loss_res["inp"]
         if mode in ("full", "hydraulic"):
             hcfg = copy.deepcopy(cfg)
+            if hcfg.get("losses") and mode == "full":
+                hcfg["losses"]["reference_inp"] = inp
             if rnd > 1 and hyd_res is not None:
                 # siguiente ronda: se parte de la solución anterior, rangos iguales
                 for pc, prm, v in zip(hcfg["hydraulic"]["parameters"], hyd_res.params,

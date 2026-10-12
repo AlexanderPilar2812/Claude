@@ -3,4 +3,5 @@ pandas>=2.0
 scipy>=1.10
 matplotlib>=3.7
 pyyaml>=6.0
-epyt>=1.2
+wntr>=1.0      # trae la biblioteca EPANET 2.2 (Windows, Linux, macOS)
+epyt>=1.2      # opcional: EPANET 2.3

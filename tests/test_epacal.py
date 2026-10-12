@@ -111,3 +111,27 @@ def test_hydraulic_recovers_metal_roughness(caso):
     assert 1.2 < metal < 2.8          # verdad = 1.90
     assert h.obj_final[1] < 0.5 * h.obj_initial[1]
     assert os.path.exists(res["report"]) and os.path.exists(res["inp"])
+
+
+def test_epanet22_matches_23(caso):
+    """Los resultados derivados en 2.2 (emisor, consumo) coinciden con los de 2.3."""
+    import ctypes
+    from epacal import engine as en
+    try:
+        p22 = en.EpanetProject(os.path.join(caso, "modelo_verdad.inp"), version="2.2")
+        p23 = en.EpanetProject(os.path.join(caso, "modelo_verdad.inp"), version="2.3")
+    except en.EpanetError:
+        pytest.skip("se necesitan las bibliotecas 2.2 (wntr) y 2.3 (epyt)")
+    assert p22.version == 20200 and p23.version >= 20300
+    out = []
+    for p in (p22, p23):
+        p.open_hydraulics()
+        p.lib.EN_initH(p.ph, 0)
+        t = ctypes.c_long()
+        p.lib.EN_runH(p.ph, ctypes.byref(t))
+        e = p.emitter_flows()
+        out.append((e.sum(), p.consumer_demands(e).sum(), p.node_values(en.EN_PRESSURE)))
+        p.close()
+    assert abs(out[0][0] - out[1][0]) / out[1][0] < 1e-3
+    assert abs(out[0][1] - out[1][1]) / out[1][1] < 1e-3
+    assert np.max(np.abs(out[0][2] - out[1][2])) < 0.01

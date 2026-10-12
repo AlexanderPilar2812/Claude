@@ -119,9 +119,23 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
     net = NetworkInfo.from_project(prj)
     net.set_dmas(cfg.get("dmas"))
     params = build_parameters(hc["parameters"], cfg.get("groups", {}), net, prj)
-    prj.close()
     if obs is None:
         obs = load_observations(cfg["observations"], base_dir)
+    sim_offset = int(cfg.get("observations", {}).get("sim_offset", 0))
+    # balance de pérdidas embebido (sólo si hay pérdidas calibradas y referencia)
+    balance = None
+    bc = hc.get("loss_balance", {})
+    lcfg = cfg.get("losses") or {}
+    if bc.get("enabled", True) and lcfg.get("reference_inp") and \
+            (prj.node_values(en.EN_EMITTER) > 0).any():
+        from .balance import build_balance
+        balance = build_balance(prj, net, lcfg, int(obs.times[-1]) + sim_offset, obs.step,
+                                lcfg["reference_inp"], lib, int(bc.get("n_inner", 2)))
+        if balance is not None:
+            log(f"  balance de pérdidas embebido: {len(balance.dmas)} sector(es), "
+                f"{balance.n_inner} correcciones por evaluación (el objetivo de pérdidas se "
+                f"mantiene para cada rugosidad candidata)")
+    prj.close()
     objectives = [k.upper() for k in hc.get("objectives", obs.kinds)]
     objectives = [{"CAUDAL": "FLOW", "PRESION": "PRESSURE"}.get(k, k) for k in objectives]
     rules = cfg.get("acceptance", [])
@@ -137,7 +151,7 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                     metric=hc.get("metric", "rmse"), huber_delta=float(hc.get("huber_delta", 1.0)),
                     lib_path=lib, kind_weight={k.upper(): float(v) for k, v in
                                                (hc.get("weights") or {}).items()},
-                    sim_offset=int(cfg.get("observations", {}).get("sim_offset", 0)))
+                    sim_offset=sim_offset, balance=balance)
     x0 = np.array([p.initial for p in params])
 
     # ---- línea base (en serie, también fija la escala de los residuos)
@@ -329,17 +343,25 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
         sensor_metrics=sm, sensitivity_initial=sens0, sensitivity_final=sens_f,
         frozen=frozen, history=res.history, n_evals=pool.n_evals + res.n_evals,
         elapsed=time.time() - t0, modified=mod, param_table=ptab)
-    write_hydraulic_outputs(result, cfg, inp_file, out_dir, lib, log)
+    write_hydraulic_outputs(result, cfg, inp_file, out_dir, lib, log, spec)
     log(f"[{tag}] terminado en {result.elapsed:.0f} s, {result.n_evals} simulaciones")
     return result
 
 
-def write_hydraulic_outputs(r: HydraulicResult, cfg, inp_file, out_dir, lib, log):
+def write_hydraulic_outputs(r: HydraulicResult, cfg, inp_file, out_dir, lib, log, spec=None):
     base = os.path.splitext(os.path.basename(cfg.get("name", "calibracion")))[0]
     out_inp = os.path.join(out_dir, f"{base}_calibrado_hidraulica.inp")
-    with en.EpanetProject(inp_file, lib) as prj:
-        apply_parameters(prj, r.params, r.x_final)
-        prj.save_inp(out_inp)
+    if spec is not None and spec.balance is not None:
+        # se guardan también los emisores y patrones re-equilibrados para x_final
+        from .simulator import Evaluator
+        ev = Evaluator(spec)
+        ev.simulate(r.x_final)
+        ev.save_inp(out_inp)
+        ev.close()
+    else:
+        with en.EpanetProject(inp_file, lib) as prj:
+            apply_parameters(prj, r.params, r.x_final)
+            prj.save_inp(out_inp)
     r.outputs["inp"] = out_inp
     p = lambda n: os.path.join(out_dir, n)
     r.modified.to_csv(p("objetos_modificados.csv"), index=False)

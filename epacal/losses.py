@@ -68,6 +68,37 @@ def _in_window(h: np.ndarray, win) -> np.ndarray:
     return (h >= a) & (h < b) if a <= b else (h >= a) | (h < b)
 
 
+def requested_demand(prj: en.EpanetProject, groups: List[np.ndarray], times: np.ndarray,
+                     node_ids: Optional[List[str]] = None) -> np.ndarray:
+    """Demanda de abonados solicitada (base × patrón × multiplicador global) por
+    grupo de nudos e instante. Se calcula con los datos del modelo, por lo que es
+    idéntica con EPANET 2.2 y 2.3 y no necesita simular.
+    ``groups``: índices 0-based de nudos (de ``node_ids`` si se da, si no del propio prj)."""
+    pstep = prj.get_time(en.EN_PATTERNSTEP) or 3600
+    pstart = prj.get_time(en.EN_PATTERNSTART)
+    mult = prj.get_option(en.EN_DEMANDMULT)
+    per = (times + pstart) // pstep
+    out = np.zeros((len(groups), len(times)))
+    pats: Dict[int, np.ndarray] = {}
+    for j, g in enumerate(groups):
+        base_by_pat: Dict[int, float] = {}
+        for i in g:
+            idx = prj.node_index(node_ids[i]) if node_ids is not None else int(i) + 1
+            for k in range(1, prj.num_demands(idx) + 1):
+                pi = prj.demand_pattern(idx, k)
+                base_by_pat[pi] = base_by_pat.get(pi, 0.0) + prj.base_demand(idx, k)
+        for pi, b in base_by_pat.items():
+            if pi == 0:
+                m = np.ones(len(times))
+            else:
+                if pi not in pats:
+                    pats[pi] = prj.get_pattern(pi)
+                pv = pats[pi]
+                m = pv[(per % len(pv)).astype(int)] if len(pv) else np.ones(len(times))
+            out[j] += b * m
+    return out * mult
+
+
 def run_losses(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                log: Callable[[str], None] = print, tag: str = "perdidas") -> dict:
     lc = cfg["losses"]
@@ -77,8 +108,9 @@ def run_losses(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
     net = NetworkInfo.from_project(prj)
     net.set_dmas(cfg.get("dmas"))
     method = lc.get("method", "emitters").lower()
-    if method == "pipe_leakage" and en.library_version(lib) < 20300:
-        raise RuntimeError("pipe_leakage requiere EPANET >= 2.3")
+    if method == "pipe_leakage" and prj.version < 20300:
+        raise RuntimeError("El método 'pipe_leakage' (fugas FAVAD por tubería) requiere "
+                           "EPANET 2.3; con EPANET 2.2 use method: emitters")
     n_nodes = prj.n_nodes
     f2m3 = en.FLOW_TO_M3S[net.flow_units]
 
@@ -216,17 +248,17 @@ def run_losses(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
             k = pos.get(t)
             if k is None:
                 return
-            leak = prj.node_values(en.EN_EMITTERFLOW)
-            if method == "pipe_leakage":
-                leak = leak + prj.node_values(en.EN_LEAKAGEFLOW)
-            full = prj.node_values(en.EN_FULLDEMAND)
             pres = prj.node_values(en.EN_PRESSURE)
+            emi = prj.emitter_flows(coef=emit_coef, pressure=pres)
+            leak = emi + prj.leakage_flows() if method == "pipe_leakage" else emi
+            served = prj.consumer_demands(emi)     # demanda servida (PDA)
             node_vol[:] += leak * dt[k] * f2m3
             for j, m in enumerate(masks):
                 L[j, k] = leak[m].sum()
-                C[j, k] = full[m].sum()
+                C[j, k] = served[m].sum()
                 P[j, k] = pres[m].mean()
 
+        emit_coef = prj.node_values(en.EN_EMITTER)
         ok = prj.run_eps(rec, cb)
         return L, C, P, node_vol, ok
 
@@ -247,29 +279,21 @@ def run_losses(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
         d.k = 0.0
     set_leaks()
     L0, C0, P0, _, ok0 = simulate()
-    inflow_t = C0.copy()          # por defecto: la demanda original ES el caudal de entrada
+    # por defecto el caudal de entrada es la demanda SOLICITADA del modelo original
+    # (base × patrón): el patrón se construyó con el caudalímetro de entrada
+    inflow_t = requested_demand(prj, [d.nodes for d in dmas], times)
+    deficit = 1 - C0.sum(axis=1) / np.maximum(inflow_t.sum(axis=1), 1e-12)
+    for d, df in zip(dmas, deficit):
+        if df > 0.005:
+            log(f"  aviso sector {d.name}: con PDA el modelo original sólo sirve el "
+                f"{100 * (1 - df):.1f} % de la demanda (presiones bajas); el patrón se "
+                f"ajusta sobre la demanda servida")
     ref = lc.get("reference_inp")
     if ref and os.path.abspath(ref) != os.path.abspath(inp_file):
         # el modelo de entrada ya trae patrones ajustados (ronda > 1): el caudal de
         # entrada y los patrones "originales" se toman del modelo de referencia
         with en.EpanetProject(ref, lib) as rp:
-            rp.set_time(en.EN_DURATION, dur)
-            rp.set_time(en.EN_HYDSTEP, rec)
-            for i in range(1, rp.n_nodes + 1):
-                if rp.node_type(i) == en.EN_JUNCTION:
-                    rp.set_node(i, en.EN_EMITTER, 0.0)
-            ref_pos = np.array([rp.node_index(net.node_ids[i]) - 1 for i in range(n_nodes)])
-            masks = [np.isin(np.arange(rp.n_nodes), ref_pos[d.nodes]) for d in dmas]
-            pos = {int(t): k for k, t in enumerate(times)}
-
-            def cb_ref(t):
-                k = pos.get(t)
-                if k is not None:
-                    full = rp.node_values(en.EN_FULLDEMAND)
-                    for j, m in enumerate(masks):
-                        inflow_t[j, k] = full[m].sum()
-
-            rp.run_eps(rec, cb_ref)
+            inflow_t = requested_demand(rp, [d.nodes for d in dmas], times, net.node_ids)
             for p_adj in list(orig_patterns):
                 if p_adj == 0:
                     continue
@@ -382,7 +406,7 @@ def run_losses(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                     Qp, _ = per_period(inflow_t[j:j + 1], plen)
                     target_c = np.maximum(Qp[0] - Lp[0], 0.0)
                     ratio = np.where(Cp[0] > 1e-12, target_c / np.maximum(Cp[0], 1e-12), 1.0)
-                    ratio = np.where(have, ratio, 1.0)
+                    ratio = np.where(have, np.clip(ratio, 0.5, 2.0), 1.0)
                     new = cur * ratio
                     chg = np.max(np.abs(new - cur) / np.maximum(np.abs(cur), 1e-9)) if plen else 0
                     max_pchg = max(max_pchg, float(chg))

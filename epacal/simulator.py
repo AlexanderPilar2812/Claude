@@ -34,6 +34,7 @@ class EvalSpec:
     kind_scale: Optional[Dict[str, float]] = None   # escala para residuos de LM
     kind_weight: Optional[Dict[str, float]] = None
     sim_offset: int = 0             # s entre t=0 del INP y el inicio de las observaciones
+    balance: Optional[object] = None  # LossBalance: mantiene el objetivo de pérdidas
 
 
 class Evaluator:
@@ -60,7 +61,9 @@ class Evaluator:
                 s.index = idx
                 prop = en.EN_VELOCITY if s.kind == "VELOCITY" else en.EN_FLOW
                 self.getters.append((False, idx, prop, s.use_abs))
-        # malla temporal
+        # malla temporal (se guardan los tiempos originales para escribir el INP)
+        self._orig_times = {p: self.prj.get_time(p) for p in
+                            (en.EN_DURATION, en.EN_HYDSTEP, en.EN_REPORTSTEP, en.EN_REPORTSTART)}
         step = obs.step
         hyd = self.prj.get_time(en.EN_HYDSTEP)
         hyd = math.gcd(hyd, step) if hyd > 0 else step
@@ -76,8 +79,34 @@ class Evaluator:
         sig = [s.sigma for s in obs.sensors]
         self.sigma = np.array([np.nan if v is None else v for v in sig])
 
+        if spec.balance is not None:
+            spec.balance.bind(self.prj)
+
     def close(self):
         self.prj.close()
+
+    def save_inp(self, path: str) -> None:
+        """Guarda el estado actual (parámetros, emisores y patrones re-equilibrados)
+        con los tiempos originales del INP."""
+        cur = {p: self.prj.get_time(p) for p in self._orig_times}
+        for p, v in self._orig_times.items():
+            self.prj.set_time(p, v)
+        self.prj.save_inp(path)
+        for p, v in cur.items():
+            self.prj.set_time(p, v)
+
+    def _rebalance(self) -> bool:
+        bal = self.spec.balance
+        bal.reset(self.prj)
+        ok = True
+        for _ in range(bal.n_inner):
+            buf = bal.new_leak_buffer()
+            try:
+                ok &= self.prj.run_eps(bal.step, lambda t: bal.record(self.prj, t, buf))
+            except en.EpanetError:
+                return False
+            bal.update(self.prj, buf)
+        return ok
 
     # ------------------------------------------------------------ simulación
     def simulate(self, x: Optional[Sequence[float]] = None, extra=None):
@@ -85,6 +114,8 @@ class Evaluator:
         recoger magnitudes adicionales en cada instante de la malla."""
         if x is not None:
             apply_parameters(self.prj, self.spec.params, np.asarray(x, float))
+        if self.spec.balance is not None:
+            self._rebalance()
         n_s, n_t = len(self.obs.sensors), len(self.obs.times)
         sim = np.full((n_s, n_t), np.nan)
         getters, prj, t_index = self.getters, self.prj, self.t_index

@@ -15,6 +15,8 @@ name: Cal_SF_LF
 inp: modelo.inp
 output_dir: resultados_SF_LF
 workers: 0
+epanet_version: "2.2"      # 2.2 (por defecto) | 2.3 | auto
+# epanet_lib: C:/ruta/epanet2.dll   # opcional: biblioteca concreta (64 bits)
 
 groups:
   PLASTIC_OLD: {select: {ids_file: familias_lineas.csv, group: PLASTIC_OLD}}
@@ -38,7 +40,7 @@ observations:
   outlier_filter: {method: hampel, window: 6, n_sigma: 3.5}
 
 losses:
-  method: emitters                # o pipe_leakage (FAVAD de EPANET 2.3)
+  method: emitters                # con EPANET 2.2 sólo emitters (pipe_leakage requiere 2.3)
   emitter_exponent: 0.5           # 1.0–1.15 es más realista en PE/PVC (FAVAD)
   allocation: length
   allocation_factors: {METAL_OLD: 2.0}
@@ -66,6 +68,7 @@ hydraulic:
   optimizer: {pop_size: 48, n_gen: 40, seed: 1, stall_gens: 10}
   selection: knee
   local_search: {enabled: true, max_iter: 12}
+  loss_balance: {enabled: true, n_inner: 2}   # mantiene el 18 % de pérdidas en cada candidato
 
 acceptance:
   - {name: CAUDAL,  kind: FLOW,     error: relative, threshold: 15, timesteps_pct: 75, points_pct: 100}
@@ -73,4 +76,4 @@ acceptance:
 
 workflow:
   mode: full
-  coupled_rounds: 2
+  coupled_rounds: 1               # el balance de pérdidas embebido mantiene el 18 % en la hidráulica

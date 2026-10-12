@@ -88,6 +88,8 @@ def build_parameters(cfgs: List[dict], groups: dict, net: NetworkInfo,
         crit = c.get("select") or (groups.get(gname, {}) or {}).get("select", groups.get(gname))
         if crit is None:
             raise ValueError(f"Grupo '{gname}' no definido")
+        if ptype == "leak_area" and prj.version < 20300:
+            raise ValueError("El parámetro 'leak_area' requiere EPANET 2.3")
         if ptype in LINK_PARAMS:
             idx = net.select_links(crit)
             if ptype == "valve_setting":

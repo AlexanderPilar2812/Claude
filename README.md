@@ -15,19 +15,40 @@ Hace lo mismo que los módulos de calibración de Giswater y añade varias cosas
 | Pérdidas | emisores con 6 pruebas fijas (Cal_Perd_2: 20,53 % logrado frente al 18 % pedido) | secante hasta la tolerancia (18,01 % con objetivo 18 % en 7 iteraciones) |
 | Objetivo de pérdidas | % de volumen | % de volumen, **caudal mínimo nocturno (MNF)**, caudal medio o volumen |
 | Ajuste del patrón | resta la fuga media | instante a instante, con la fuga simulada en cada paso (la fuga depende de la presión). El balance entrada = consumo + fugas cierra con un error menor del 0,05 % |
-| Reparto de fugas | por nudo | por longitud, uniforme, por demanda o desde fichero, con factores por familia (p. ej. metal antiguo ×2). También FAVAD por tubería (EPANET 2.3) |
-| Pérdidas ↔ hidráulica | procesos separados | rondas acopladas: pérdidas → hidráulica → pérdidas → … |
+| Reparto de fugas | por nudo | por longitud, uniforme, por demanda o desde fichero, con factores por familia (p. ej. metal antiguo ×2). Con EPANET 2.3, también FAVAD por tubería |
+| Pérdidas ↔ hidráulica | procesos separados: al cambiar la rugosidad, las fugas dejan de cumplir el objetivo | **balance de pérdidas embebido**: en cada candidato se re-equilibran emisores y patrón para que el objetivo de pérdidas y el caudal de entrada se cumplan siempre (opcionalmente, más rondas acopladas) |
 | Varios sectores | sí | sí. Si un patrón lo comparten varios sectores, se crea una copia por sector |
 
-## Instalación
+## Instalación (EPANET 2.2)
 
 ```bash
-pip install -r requirements.txt     # numpy, pandas, scipy, matplotlib, pyyaml, epyt
+pip install -r requirements.txt     # numpy, pandas, scipy, matplotlib, pyyaml, wntr
 ```
 
-`epyt` trae la biblioteca nativa de EPANET 2.3 para Windows, Linux y macOS.
-Para usar otra versión, defina la variable `EPANET_LIB` con la ruta a `epanet2.dll`/`.so`
-o ponga `epanet_lib:` en la configuración.
+**epacal trabaja por defecto con EPANET 2.2**, la versión que usan Giswater y la
+mayoría de los modelos en explotación. El paquete `wntr` trae la biblioteca oficial
+EPANET 2.2 (`epanet22.dll`, `libepanet22.so`, `libepanet22.dylib`) y epacal la
+encuentra sola. El INP calibrado lo escribe la misma biblioteca 2.2, así que se
+abre sin problemas en EPANET 2.2 y en Giswater.
+
+Otras opciones:
+
+```yaml
+epanet_version: "2.2"                 # 2.2 (por defecto) | 2.3 | auto
+epanet_lib: C:/EPANET/epanet2.dll     # o una biblioteca concreta (de 64 bits)
+```
+
+También puede usarse la variable de entorno `EPANET_LIB` o la opción
+`python -m epacal config.yaml --epanet 2.2` en la línea de comandos.
+
+Diferencias entre versiones, resueltas internamente:
+
+| | EPANET 2.2 | EPANET 2.3 |
+|---|---|---|
+| Calibración hidráulica | completa | completa |
+| Pérdidas con emisores | sí. El caudal de emisor se calcula como `K·p^γ` y el consumo como demanda − emisor, igual que en 2.3 (lo comprueba una prueba automática) | sí |
+| Fugas FAVAD por tubería (`pipe_leakage`, `leak_area`) | no disponible | sí |
+| Lectura masiva de resultados | bucle por nudo (algo más lento en pérdidas) | `EN_getnodevalues` |
 
 ## Uso
 
@@ -115,6 +136,12 @@ los sensores. Es el mismo criterio que usa Giswater.
    cuando el hipervolumen deja de mejorar.
 4. Se evalúan las reglas de aceptación en cada solución del frente y se elige la
    de compromiso entre las que más reglas cumplen.
+   Si se calibraron pérdidas, cada candidato pasa antes por el *balance de
+   pérdidas embebido*: con `n_inner` simulaciones se reajustan el factor de los
+   emisores y el patrón para que se mantengan el objetivo de pérdidas y la
+   igualdad consumo servido (PDA) + fugas = entrada. Sin este paso, una
+   rugosidad mayor reduce la presión y las fugas, el caudal de entrada deja de
+   cuadrar y el optimizador lo compensa con rugosidades falsas.
 5. Refinamiento por mínimos cuadrados con límites, con el jacobiano calculado en
    paralelo. Sólo se acepta si mejora.
 6. Diagnóstico: IC95, correlaciones y sesgo por sensor. Un sesgo constante suele
