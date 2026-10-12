@@ -1,0 +1,14 @@
+{
+  "rugosidad_y_tcv": {
+    "PLASTIC_OLD": 0.0065,
+    "METAL_OLD": 1.9,
+    "TCV_OLD": 6.4
+  },
+  "originales": {
+    "PLASTIC_OLD": 0.0015,
+    "METAL_OLD": 0.2591,
+    "TCV_OLD": 0.0
+  },
+  "perdidas_pct_real": 17.99958530350542,
+  "k_emisores_total": 9.87502270139718
+}

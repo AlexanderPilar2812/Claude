@@ -1,0 +1,76 @@
+# =====================================================================
+#  PLANTILLA para el caso real ZP-01 San Francisco – La Finca
+#  (replica la configuración de los informes Giswater Cal_Hidr_2_SF_LF
+#   y Cal_Perd_2, con las mejoras de epacal).
+#
+#  Ficheros que hay que preparar (exportables desde Giswater / QGIS):
+#    - modelo.inp                 INP exportado (D-W, CMH, PDA)
+#    - familias_lineas.csv        link_id,familia   (PLASTIC_OLD, METAL_OLD, TCV_OLD…)
+#    - nodos_dma.csv              node_id,dma       (ME08D001 …)
+#    - observados.csv             sensor,type,element,timestamp,value
+#    - sensores.csv               sensor,type,element,weight[,sigma]
+#    - caudal_entrada_ME08D001.csv (opcional) timestamp,value
+# =====================================================================
+name: Cal_SF_LF
+inp: modelo.inp
+output_dir: resultados_SF_LF
+workers: 0
+
+groups:
+  PLASTIC_OLD: {select: {ids_file: familias_lineas.csv, group: PLASTIC_OLD}}
+  METAL_OLD:   {select: {ids_file: familias_lineas.csv, group: METAL_OLD}}
+  TCV_OLD:     {select: {link_type: TCV}}
+  # Si las familias vienen en la sección [TAGS] del INP:
+  # PLASTIC_OLD: {select: {tag: PLASTIC_OLD}}
+
+dmas:
+  file: nodos_dma.csv
+
+observations:
+  file: observados.csv
+  format: long
+  sensors_file: sensores.csv
+  start: "2026-07-09 00:00:00"
+  end:   "2026-07-14 23:59:59"
+  step: 900                       # comparación cada 15 min
+  validation_start: "2026-07-13 00:00:00"   # 2 últimos días para validar
+  warmup: 3600
+  outlier_filter: {method: hampel, window: 6, n_sigma: 3.5}
+
+losses:
+  method: emitters                # o pipe_leakage (FAVAD de EPANET 2.3)
+  emitter_exponent: 0.5           # 1.0–1.15 es más realista en PE/PVC (FAVAD)
+  allocation: length
+  allocation_factors: {METAL_OLD: 2.0}
+  pattern_adjust: true
+  tolerance: 0.0005
+  max_iter: 40
+  dmas:
+    ME08D001:
+      target: {type: percent, value: 18}
+      # Alternativa basada en el caudal mínimo nocturno:
+      # target: {type: mnf, night_window: [2, 4], legit_night_use: 2.5}
+      # inflow_file: caudal_entrada_ME08D001.csv
+
+hydraulic:
+  objectives: [FLOW, PRESSURE]
+  metric: rmse
+  parameters:
+    - {group: PLASTIC_OLD, type: roughness, bounds: [0.0007, 0.1], log: true}
+    - {group: METAL_OLD,   type: roughness, bounds: [0.05, 5.0],   log: true}
+    - {group: TCV_OLD,     type: valve_setting, bounds: [0.0, 50.0]}
+    # Opcionales, si los datos lo justifican:
+    # - {group: TODOS, type: demand_multiplier, bounds: [0.85, 1.15]}
+    # - {group: EMBALSE, type: reservoir_head, bounds: [-2, 2]}
+  sensitivity: {enabled: true, freeze_below: 0.01}
+  optimizer: {pop_size: 48, n_gen: 40, seed: 1, stall_gens: 10}
+  selection: knee
+  local_search: {enabled: true, max_iter: 12}
+
+acceptance:
+  - {name: CAUDAL,  kind: FLOW,     error: relative, threshold: 15, timesteps_pct: 75, points_pct: 100}
+  - {name: PRESION, kind: PRESSURE, error: absolute, threshold: 5,  timesteps_pct: 80, points_pct: 80}
+
+workflow:
+  mode: full
+  coupled_rounds: 2

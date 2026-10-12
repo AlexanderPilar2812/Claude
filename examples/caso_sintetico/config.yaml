@@ -1,0 +1,78 @@
+# =====================================================================
+#  Configuración de calibración  (caso sintético de prueba)
+#  Todas las rutas son relativas a este fichero.
+# =====================================================================
+name: Cal_Sintetico
+inp: modelo_inicial.inp
+output_dir: resultados
+workers: 0                 # 0 = todos los núcleos menos uno
+
+# ---------------------------------------------------------------------
+# FAMILIAS (grupos de elementos que comparten un parámetro)
+#   criterios: tag, link_type, node_type, ids, ids_file(+group), id_regex,
+#              roughness:[min,max], diameter:[min,max], length, elevation, dma, all
+# ---------------------------------------------------------------------
+groups:
+  PLASTIC_OLD: {select: {tag: PLASTIC_OLD}}
+  METAL_OLD:   {select: {tag: METAL_OLD}}
+  TCV_OLD:     {select: {tag: TCV_OLD, link_type: TCV}}
+
+# Sectores (DMA). Alternativas: {file: nodos_dma.csv} o {by_tag: true}
+dmas:
+  SECTOR_1: {select: {node_type: JUNCTION}}
+
+# ---------------------------------------------------------------------
+# DATOS OBSERVADOS DE CAMPO
+# ---------------------------------------------------------------------
+observations:
+  file: observados.csv          # sensor,type,element,timestamp,value
+  format: long
+  sensors_file: sensores.csv    # pesos / incertidumbre por sensor (opcional)
+  start: "2026-07-09 00:00:00"  # instante que corresponde a t=0 del INP
+  step: 900                     # s: malla de comparación (medias de 15 min)
+  validation_start: "2026-07-12 00:00:00"   # el último día NO se usa al calibrar
+  warmup: 3600                  # s iniciales descartados
+  outlier_filter: {method: hampel, window: 6, n_sigma: 3.5}
+
+# ---------------------------------------------------------------------
+# CALIBRACIÓN DE PÉRDIDAS
+# ---------------------------------------------------------------------
+losses:
+  method: emitters              # emitters (como Giswater) | pipe_leakage (FAVAD, EPANET 2.3)
+  emitter_exponent: 0.5         # N1
+  allocation: length            # length | uniform | demand | file
+  allocation_factors:           # más fuga en familias peores
+    METAL_OLD: 2.0
+  pattern_adjust: true
+  tolerance: 0.0005             # 0,05 puntos porcentuales
+  max_iter: 30
+  dmas:
+    SECTOR_1:
+      target: {type: percent, value: 18}
+      # target: {type: mnf, night_window: [2, 4], legit_night_use: 3.0}
+      # inflow_file: caudal_entrada.csv
+
+# ---------------------------------------------------------------------
+# CALIBRACIÓN HIDRÁULICA
+# ---------------------------------------------------------------------
+hydraulic:
+  objectives: [FLOW, PRESSURE]  # un objetivo por tipo de sensor
+  metric: rmse                  # rmse | mae | huber | rme
+  parameters:
+    - {group: PLASTIC_OLD, type: roughness, bounds: [0.0005, 0.1], log: true}
+    - {group: METAL_OLD,   type: roughness, bounds: [0.01, 5.0],   log: true}
+    - {group: TCV_OLD,     type: valve_setting, bounds: [0.0, 40.0]}
+  sensitivity: {enabled: true, freeze_below: 0.01}
+  optimizer: {pop_size: 32, n_gen: 25, seed: 1, stall_gens: 8}
+  selection: knee               # knee | topsis | weighted
+  local_search: {enabled: true, max_iter: 10}
+
+# Reglas de aceptación (equivalentes a las de Giswater)
+acceptance:
+  - {name: CAUDAL,  kind: FLOW,     error: relative, threshold: 15, timesteps_pct: 75, points_pct: 100}
+  - {name: PRESION, kind: PRESSURE, error: absolute, threshold: 5,  timesteps_pct: 80, points_pct: 80}
+  - {name: PRESION_FINA, kind: PRESSURE, error: absolute, threshold: 1, timesteps_pct: 80, points_pct: 80}
+
+workflow:
+  mode: full                    # full | losses | hydraulic
+  coupled_rounds: 2             # pérdidas -> hidráulica -> pérdidas -> hidráulica
