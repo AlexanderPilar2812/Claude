@@ -1,0 +1,70 @@
+# =====================================================================
+#  Calibración ZP02EC (Mod_Teo_EC.inp, exportado de Giswater 4.17.4)
+#  Datos: 1 caudalímetro de entrada (3939065) + 14 sensores de presión,
+#         0–144 h cada 15 min.  Pérdidas reales del sector: 17 %.
+# =====================================================================
+name: ZP02EC
+inp: Mod_Teo_EC.inp
+output_dir: resultados
+workers: 0
+epanet_version: "2.2"
+
+# Familias a partir del catálogo que Giswater escribe en el comentario
+groups:
+  PVC:          {select: {catalog_regex: "^PVC", link_type: PIPE}}
+  PEAD:         {select: {catalog_regex: "^PEAD", link_type: PIPE}}
+  METAL:        {select: {catalog_regex: "^(HG|HF|HD)", link_type: PIPE}}
+  TCV_ENTRADA:  {select: {ids: [3937614_n2a]}}                 # válvula de entrada (K=50)
+  TCV_ESTRANG:  {select: {link_type: TCV, setting: [0.5, 1000], exclude_ids: [3937614_n2a]}}
+  DEPOSITO:     {select: {node_type: RESERVOIR}}
+
+dmas:
+  ZP02EC: {select: {node_type: JUNCTION}}
+
+observations:
+  files:
+    - {file: calibr_caudal_ZP02EC.dat,  type: FLOW}
+    - {file: calibr_presion_ZP02EC.dat, type: PRESSURE}
+  start: "2026-01-01 00:00:00"      # hora 0 de los .dat = t=0 del INP
+  step: 900
+  validation_start: "2026-01-06 00:00:00"   # último día (120–144 h) sólo para validar
+  warmup: 3600
+  outlier_filter: {method: hampel, window: 6, n_sigma: 3.5}
+
+losses:
+  method: emitters
+  emitter_exponent: 0.5
+  allocation: length
+  allocation_factors: {METAL: 2.0}
+  pattern_adjust: true
+  tolerance: 0.0005
+  max_iter: 40
+  dmas:
+    ZP02EC:
+      target: {type: percent, value: 17}
+      inflow_sensor: "3939065"        # caudalímetro de entrada: patrón = medido − fugas
+
+hydraulic:
+  objectives: [FLOW, PRESSURE]
+  metric: rmse
+  parameters:
+    - {group: PVC,         type: roughness,     bounds: [0.0005, 0.1],  log: true}
+    - {group: PEAD,        type: roughness,     bounds: [0.0005, 0.1],  log: true}
+    - {group: METAL,       type: roughness,     bounds: [0.01, 5.0],    log: true}
+    - {group: TCV_ENTRADA, type: valve_setting, bounds: [0.0, 200.0]}
+    - {group: TCV_ESTRANG, type: valve_setting, mode: multiplier, bounds: [0.05, 5.0], log: true}
+    - {group: DEPOSITO,    type: reservoir_head, bounds: [-4.0, 4.0]}
+  sensitivity: {enabled: true, freeze_below: 0.01}
+  optimizer: {pop_size: 40, n_gen: 30, seed: 1, stall_gens: 8}
+  selection: knee
+  local_search: {enabled: true, max_iter: 12}
+  loss_balance: {enabled: true, n_inner: 2}
+
+acceptance:
+  - {name: CAUDAL,       kind: FLOW,     error: relative, threshold: 15,  timesteps_pct: 75, points_pct: 100}
+  - {name: PRESION,      kind: PRESSURE, error: absolute, threshold: 5,   timesteps_pct: 80, points_pct: 80}
+  - {name: PRESION_1M,   kind: PRESSURE, error: absolute, threshold: 1.0, timesteps_pct: 75, points_pct: 75}
+
+workflow:
+  mode: full
+  coupled_rounds: 1

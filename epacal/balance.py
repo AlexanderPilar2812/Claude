@@ -154,9 +154,10 @@ class LossBalance:
 
 def build_balance(prj: en.EpanetProject, net: NetworkInfo, losses_cfg: dict, duration: int,
                   step: int, reference_inp: Optional[str], lib: Optional[str],
-                  n_inner: int = 2) -> Optional[LossBalance]:
+                  n_inner: int = 2, cfg: Optional[dict] = None,
+                  base_dir: str = ".") -> Optional[LossBalance]:
     """Construye el balance desde un INP ya calibrado en pérdidas."""
-    from .losses import requested_demand, _clock_hours, _in_window
+    from .losses import requested_demand, measured_inflow, _clock_hours, _in_window
 
     dma_cfg = losses_cfg.get("dmas") or {"ALL": {"target": losses_cfg.get("target", {})}}
     times = np.arange(0, duration + 1, step)
@@ -202,6 +203,10 @@ def build_balance(prj: en.EpanetProject, net: NetworkInfo, losses_cfg: dict, dur
         infl = requested_demand(prj, groups, times)
     out = []
     for (d, t), q in zip(dmas, infl):
+        meas = measured_inflow(cfg, dma_cfg[d.name], base_dir, times) if cfg else None
+        if meas is not None:
+            q = q.copy()
+            q[np.isfinite(meas)] = meas[np.isfinite(meas)]
         d.inflow = q
         typ = d.target_type
         if typ == "percent":

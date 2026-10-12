@@ -68,6 +68,43 @@ def _in_window(h: np.ndarray, win) -> np.ndarray:
     return (h >= a) & (h < b) if a <= b else (h >= a) | (h < b)
 
 
+def measured_inflow(cfg: dict, dma_entry: dict, base_dir: str,
+                    times: np.ndarray) -> Optional[np.ndarray]:
+    """Caudal de entrada medido del sector en los instantes ``times`` (s desde t=0).
+
+    ``inflow_sensor``: ID de un sensor de caudal de las observaciones (p. ej. el
+    caudalímetro de entrada de los .dat de calibración).
+    ``inflow_file``: CSV timestamp,valor.
+    Fuera del rango medido devuelve NaN (se usa la demanda del modelo)."""
+    sid = dma_entry.get("inflow_sensor")
+    f = dma_entry.get("inflow_file")
+    if not sid and not f:
+        return None
+    if sid:
+        from .observations import load_observations
+        ocfg = dict(cfg["observations"], warmup=0)
+        obs = load_observations(ocfg, base_dir)
+        ids = [s.sensor_id for s in obs.sensors]
+        if str(sid) not in ids:
+            raise ValueError(f"inflow_sensor '{sid}' no está en las observaciones")
+        v = obs.values[ids.index(str(sid))]
+        secs, vals = obs.times.astype(float), v
+    else:
+        s = pd.read_csv(os.path.join(base_dir, f), sep=None, engine="python")
+        ts = pd.to_datetime(s.iloc[:, 0])
+        start = pd.Timestamp(cfg.get("losses", {}).get("start")
+                             or cfg.get("observations", {}).get("start") or ts.min().floor("D"))
+        secs = (ts - start).dt.total_seconds().to_numpy()
+        vals = s.iloc[:, 1].astype(float).to_numpy()
+    m = np.isfinite(vals)
+    secs, vals = secs[m], vals[m]
+    o = np.argsort(secs)
+    secs, vals = secs[o], vals[o]
+    out = np.interp(times, secs, vals)
+    out[(times < secs[0]) | (times > secs[-1])] = np.nan
+    return out
+
+
 def requested_demand(prj: en.EpanetProject, groups: List[np.ndarray], times: np.ndarray,
                      node_ids: Optional[List[str]] = None) -> np.ndarray:
     """Demanda de abonados solicitada (base × patrón × multiplicador global) por
@@ -269,9 +306,12 @@ def run_losses(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
         out = np.zeros((series_2d.shape[0], plen))
         cnt = np.zeros(plen)
         idx = per_idx % plen
-        np.add.at(cnt, idx, dt)
+        w = dt.copy()
+        if len(idx) > 1 and idx[-1] == idx[0]:
+            w[-1] = 0.0      # el instante final repite el periodo inicial del ciclo
+        np.add.at(cnt, idx, w)
         for j in range(series_2d.shape[0]):
-            np.add.at(out[j], idx, series_2d[j] * dt)
+            np.add.at(out[j], idx, series_2d[j] * w)
         return out / np.where(cnt > 0, cnt, 1), cnt > 0
 
     # simulación inicial sin fugas -> caudal de entrada de referencia
@@ -302,19 +342,13 @@ def run_losses(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                     orig_patterns[p_adj] = rp.get_pattern(ridx)
         log(f"  caudal de entrada y patrones originales tomados de {os.path.basename(ref)}")
     for j, d in enumerate(dmas):
-        f = dma_cfg[d.name].get("inflow_file")
-        if f:
-            s = pd.read_csv(os.path.join(base_dir, f), sep=None, engine="python")
-            s.columns = [c.lower() for c in s.columns]
-            ts = pd.to_datetime(s.iloc[:, 0])
-            start = pd.Timestamp(lc.get("start") or cfg.get("observations", {}).get("start")
-                                 or ts.min().floor("D"))
-            secs = (ts - start).dt.total_seconds().to_numpy()
-            vals = s.iloc[:, 1].astype(float).to_numpy()
-            o = np.argsort(secs)
-            inflow_t[j] = np.interp(times, secs[o], vals[o])
-            log(f"  sector {d.name}: caudal de entrada medido ({f}), media "
-                f"{inflow_t[j].mean():.3f} {net.flow_units}")
+        meas = measured_inflow(cfg, dma_cfg[d.name], base_dir, times)
+        if meas is not None:
+            ok_m = np.isfinite(meas)
+            inflow_t[j, ok_m] = meas[ok_m]
+            log(f"  sector {d.name}: caudal de entrada MEDIDO en {ok_m.mean() * 100:.0f} % de la "
+                f"simulación (media {meas[ok_m].mean():.3f} {net.flow_units}); fuera de ese "
+                f"rango se mantiene la demanda del modelo")
     vol_in = (inflow_t * dt).sum(axis=1)
 
     # objetivos

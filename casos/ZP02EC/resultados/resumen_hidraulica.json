@@ -1,0 +1,70 @@
+{
+  "objetivos": [
+    "FLOW",
+    "PRESSURE"
+  ],
+  "objetivos_inicial": {
+    "FLOW": 0.17326503330696988,
+    "PRESSURE": 1.6867395183375973
+  },
+  "objetivos_final": {
+    "FLOW": 0.17074098699827553,
+    "PRESSURE": 1.1235264108142908
+  },
+  "parametros": {
+    "PVC:roughness": 0.0015000000000000007,
+    "PEAD:roughness": 0.0015000000000000007,
+    "METAL:roughness": 0.2591,
+    "TCV_ENTRADA:valve_setting": 3.8540505452774236,
+    "TCV_ESTRANG:valve_setting": 0.050362172249027504,
+    "DEPOSITO:reservoir_head": -1.5607428717232037
+  },
+  "congelados": [
+    "PVC:roughness",
+    "PEAD:roughness",
+    "METAL:roughness"
+  ],
+  "reglas_calibracion": [
+    {
+      "regla": "CAUDAL",
+      "pasa": true,
+      "puntos_ok": "1/1",
+      "obs_ok": "476/476"
+    },
+    {
+      "regla": "PRESION",
+      "pasa": true,
+      "puntos_ok": "14/14",
+      "obs_ok": "6611/6658"
+    },
+    {
+      "regla": "PRESION_1M",
+      "pasa": true,
+      "puntos_ok": "11/14",
+      "obs_ok": "5351/6658"
+    }
+  ],
+  "reglas_validacion": [
+    {
+      "regla": "CAUDAL",
+      "pasa": true,
+      "puntos_ok": "1/1",
+      "obs_ok": "97/97"
+    },
+    {
+      "regla": "PRESION",
+      "pasa": true,
+      "puntos_ok": "14/14",
+      "obs_ok": "1343/1355"
+    },
+    {
+      "regla": "PRESION_1M",
+      "pasa": false,
+      "puntos_ok": "7/14",
+      "obs_ok": "1002/1355"
+    }
+  ],
+  "simulaciones": 2545,
+  "segundos": 1450.037978887558,
+  "inp": "/home/user/Claude/casos/ZP02EC/resultados/ZP02EC_calibrado_hidraulica.inp"
+}

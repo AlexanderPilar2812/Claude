@@ -130,7 +130,8 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
             (prj.node_values(en.EN_EMITTER) > 0).any():
         from .balance import build_balance
         balance = build_balance(prj, net, lcfg, int(obs.times[-1]) + sim_offset, obs.step,
-                                lcfg["reference_inp"], lib, int(bc.get("n_inner", 2)))
+                                lcfg["reference_inp"], lib, int(bc.get("n_inner", 2)),
+                                cfg=cfg, base_dir=base_dir)
         if balance is not None:
             log(f"  balance de pérdidas embebido: {len(balance.dmas)} sector(es), "
                 f"{balance.n_inner} correcciones por evaluación (el objetivo de pérdidas se "

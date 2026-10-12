@@ -104,8 +104,42 @@ def load_observations(cfg: dict, base_dir: str = ".") -> Observations:
     tsfmt = cfg.get("timestamp_format")
     meta = _read_sensor_meta(p(cfg.get("sensors_file")))
 
-    if fmt == "long":
-        df = pd.read_csv(p(cfg["file"]), sep=None, engine="python")
+    if "files" in cfg:
+        # varias fuentes, p. ej. ficheros de calibración de EPANET (.dat):
+        #   files: [{file: caudal.dat, type: FLOW}, {file: presion.dat, type: PRESSURE}]
+        # formato .dat: "id  hora  valor" (separado por espacios/tabuladores;
+        # una línea con sólo el id inicia un bloque, como en EPANET)
+        start0 = pd.Timestamp(cfg.get("start", "2000-01-01 00:00:00"))
+        parts = []
+        for src in cfg["files"]:
+            kind = _norm_kind(src.get("type", "PRESSURE"))
+            rows, cur = [], None
+            with open(p(src["file"]), "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.split(";", 1)[0].strip()
+                    if not line:
+                        continue
+                    tok = line.split()
+                    try:
+                        if len(tok) >= 3:
+                            cur = tok[0]
+                            h, v = float(tok[1].replace(",", ".")), float(tok[2].replace(",", "."))
+                        elif len(tok) == 2 and cur is not None:
+                            h, v = float(tok[0].replace(",", ".")), float(tok[1].replace(",", "."))
+                        else:
+                            cur = tok[0]
+                            continue
+                    except ValueError:
+                        continue          # cabeceras
+                    rows.append((cur, kind, cur, start0 + pd.Timedelta(hours=h), v))
+            parts.append(pd.DataFrame(rows, columns=["sensor", "type", "element",
+                                                     "timestamp", "value"]))
+        df = pd.concat(parts, ignore_index=True)
+        cfg = dict(cfg, start=str(start0))
+        fmt = "_frame"
+    if fmt in ("long", "_frame"):
+        if fmt == "long":
+            df = pd.read_csv(p(cfg["file"]), sep=None, engine="python")
         df.columns = [c.strip().lower() for c in df.columns]
         if "element" not in df.columns:
             df["element"] = df["sensor"]

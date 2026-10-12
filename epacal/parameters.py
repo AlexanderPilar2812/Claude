@@ -20,7 +20,7 @@ escala logarítmica (recomendado para rugosidad Darcy-Weisbach).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -50,6 +50,7 @@ class Parameter:
     initial: float                # valor inicial del parámetro
     prior_weight: float = 0.0     # regularización de Tikhonov hacia `initial`
     base_demands: list = field(default_factory=list)  # [(node, k, valor)]
+    offset_scale: Optional[np.ndarray] = None  # embalses con patrón de nivel
 
     @property
     def is_link(self) -> bool:
@@ -73,6 +74,9 @@ class Parameter:
         if self.mode == "multiplier":
             return self.base * x
         if self.mode == "offset":
+            if self.offset_scale is not None:
+                # nivel = base × patrón  ->  desplazar x metros equivale a base + x/patrón
+                return self.base + x / self.offset_scale
             return self.base + x
         raise ValueError(self.mode)
 
@@ -126,6 +130,12 @@ def build_parameters(cfgs: List[dict], groups: dict, net: NetworkInfo,
                       lower=lo, upper=hi, log=log, elements=np.asarray(idx, int),
                       base=np.asarray(base, float), initial=init,
                       prior_weight=float(c.get("prior_weight", 0.0)))
+        if ptype == "reservoir_head":
+            sc = []
+            for i in idx:
+                pat = int(prj.get_node(int(i) + 1, en.EN_PATTERN))
+                sc.append(float(np.mean(prj.get_pattern(pat))) if pat > 0 else 1.0)
+            p.offset_scale = np.array(sc)
         if ptype == "demand_multiplier":
             for i in idx:
                 for k in range(1, prj.num_demands(int(i) + 1) + 1):

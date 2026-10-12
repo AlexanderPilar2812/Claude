@@ -5,12 +5,17 @@ calibración (p. ej. todas las tuberías de PVC antiguas comparten rugosidad).
 Se seleccionan combinando criterios (todos deben cumplirse = AND):
 
     tag:          etiqueta de la sección [TAGS] del INP (str o lista)
+    catalog:      catálogo del comentario de Giswater (última palabra tras ';',
+                  p. ej. PVC100, HG50, VCORTE_HIDRANTE) (str o lista)
+    catalog_regex: expresión regular sobre ese catálogo (p. ej. "^(HG|HF|HD)")
     link_type:    PIPE, TCV, PRV, ... (str o lista)
     node_type:    JUNCTION, RESERVOIR, TANK
     ids:          lista explícita de IDs
     ids_file:     CSV con columnas id,group  (+ clave ``group``)
     id_regex:     expresión regular sobre el ID
     roughness:    [min, max]   (rugosidad original)
+    setting:      [min, max]   (consigna inicial de válvulas)
+    exclude_ids:  lista de IDs a excluir
     diameter:     [min, max]
     length:       [min, max]
     elevation:    [min, max]   (nodos)
@@ -48,6 +53,36 @@ def parse_tags(inp_file: str) -> Dict[str, Dict[str, str]]:
     return tags
 
 
+_NODE_SECTIONS = {"[JUNCTIONS]", "[RESERVOIRS]", "[TANKS]"}
+_LINK_SECTIONS = {"[PIPES]", "[VALVES]", "[PUMPS]"}
+
+
+def parse_catalog(inp_file: str) -> Dict[str, Dict[str, str]]:
+    """Catálogo de cada elemento a partir del comentario de línea que exporta
+    Giswater (``... ;sector prz dma dqa mins CATALOGO``): última palabra."""
+    cat: Dict[str, Dict[str, str]] = {"NODE": {}, "LINK": {}}
+    section = None
+    with open(inp_file, "r", encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            st = raw.strip()
+            if not st:
+                continue
+            if st.startswith("["):
+                section = st.split()[0].upper()
+                continue
+            if st.startswith(";") or ";" not in st:
+                continue
+            data, comment = st.split(";", 1)
+            parts, ctoks = data.split(), comment.split()
+            if not parts or not ctoks:
+                continue
+            if section in _NODE_SECTIONS:
+                cat["NODE"][parts[0]] = ctoks[-1]
+            elif section in _LINK_SECTIONS:
+                cat["LINK"][parts[0]] = ctoks[-1]
+    return cat
+
+
 def read_mapping_csv(path: str) -> Dict[str, str]:
     """CSV de dos columnas (id, valor). Admite separador ',' o ';' y cabecera."""
     out: Dict[str, str] = {}
@@ -83,6 +118,7 @@ class NetworkInfo:
     emitter: np.ndarray
     base_demand: np.ndarray      # suma de demandas base por nodo
     tags: Dict[str, Dict[str, str]]
+    catalog: Dict[str, Dict[str, str]]
     flow_units: str
     headloss: int
     demand_model: str
@@ -119,6 +155,7 @@ class NetworkInfo:
             emitter=prj.node_values(en.EN_EMITTER),
             base_demand=bd,
             tags=parse_tags(prj.inp_file),
+            catalog=parse_catalog(prj.inp_file),
             flow_units=prj.flow_units(),
             headloss=int(prj.get_option(en.EN_HEADLOSSFORM)),
             demand_model=prj.demand_model()[0],
@@ -183,6 +220,13 @@ class NetworkInfo:
         if "tag" in crit:
             wanted = set(self._as_list(crit["tag"]))
             mask &= np.array([self.tags["LINK"].get(l) in wanted for l in self.link_ids])
+        if "catalog" in crit:
+            wanted = set(self._as_list(crit["catalog"]))
+            mask &= np.array([self.catalog["LINK"].get(l) in wanted for l in self.link_ids])
+        if "catalog_regex" in crit:
+            rx = re.compile(crit["catalog_regex"])
+            mask &= np.array([bool(rx.search(self.catalog["LINK"].get(l, "")))
+                              for l in self.link_ids])
         if "link_type" in crit:
             wanted = {t.upper() for t in self._as_list(crit["link_type"])}
             mask &= np.array([en.LINK_TYPES[t] in wanted or
@@ -197,8 +241,11 @@ class NetworkInfo:
         if "id_regex" in crit:
             rx = re.compile(crit["id_regex"])
             mask &= np.array([bool(rx.search(l)) for l in self.link_ids])
+        if "exclude_ids" in crit:
+            bad = set(self._as_list(crit["exclude_ids"]))
+            mask &= np.array([l not in bad for l in self.link_ids])
         for key, arr in (("roughness", self.roughness), ("diameter", self.diameter),
-                         ("length", self.length)):
+                         ("length", self.length), ("setting", self.init_setting)):
             if key in crit:
                 lo, hi = crit[key]
                 mask &= (arr >= float(lo)) & (arr <= float(hi))
@@ -217,6 +264,13 @@ class NetworkInfo:
         if "tag" in crit:
             wanted = set(self._as_list(crit["tag"]))
             mask &= np.array([self.tags["NODE"].get(x) in wanted for x in self.node_ids])
+        if "catalog" in crit:
+            wanted = set(self._as_list(crit["catalog"]))
+            mask &= np.array([self.catalog["NODE"].get(x) in wanted for x in self.node_ids])
+        if "catalog_regex" in crit:
+            rx = re.compile(crit["catalog_regex"])
+            mask &= np.array([bool(rx.search(self.catalog["NODE"].get(x, "")))
+                              for x in self.node_ids])
         if "node_type" in crit:
             wanted = {t.upper() for t in self._as_list(crit["node_type"])}
             mask &= np.array([en.NODE_TYPES[t] in wanted for t in self.node_type])
