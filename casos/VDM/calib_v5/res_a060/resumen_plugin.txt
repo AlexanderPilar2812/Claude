@@ -1,0 +1,4 @@
+Proyecto: VDM_a060
+INP final: /home/user/Claude/casos/VDM/calib_v5/res_a060/VDM_a060_CALIBRADO.inp
+PRESSURE: 5.9488 -> 2.8940
+FLOW: 3.4105 -> 2.2436

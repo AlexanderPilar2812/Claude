@@ -1,0 +1,43 @@
+{
+  "objetivos": [
+    "PRESSURE",
+    "FLOW"
+  ],
+  "objetivos_inicial": {
+    "PRESSURE": 5.9588334627150905,
+    "FLOW": 3.916490218418249
+  },
+  "objetivos_final": {
+    "PRESSURE": 3.042131781393952,
+    "FLOW": 2.75937315368059
+  },
+  "parametros": {
+    "PVC:roughness": 0.0019302024693557,
+    "PEAD:roughness": 0.0015,
+    "VRP_3949706:valve_setting": -7.139775982187915,
+    "TCV_P11:valve_setting": 2866.7921187071315,
+    "DEM_Z3949706:demand_multiplier": 0.7075546510718546,
+    "DEM_RESTO:demand_multiplier": 1.1106001554174696
+  },
+  "congelados": [
+    "PEAD:roughness"
+  ],
+  "reglas_calibracion": [
+    {
+      "regla": "CAUDAL",
+      "pasa": false,
+      "puntos_ok": "2/3",
+      "obs_ok": "223/288"
+    },
+    {
+      "regla": "PRESION",
+      "pasa": true,
+      "puntos_ok": "12/14",
+      "obs_ok": "1215/1344"
+    }
+  ],
+  "reglas_validacion": [],
+  "simulaciones": 783,
+  "segundos": 39.698925256729126,
+  "inp": "/home/user/Claude/casos/VDM/calib_v5/res_a030/VDM_a030_calibrado_hidraulica.inp"
+}

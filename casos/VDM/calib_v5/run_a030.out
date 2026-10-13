@@ -1,0 +1,42 @@
+[    0.0s]   plugin cargado: /home/user/Claude/plugins/ejemplo_plugin.py
+[    0.6s] EPANET 2.2 (/usr/local/lib/python3.13/dist-packages/wntr/epanet/libepanet/linux-x64/libepanet22.so)
+[    0.7s] [hidráulica] red: 1294 nodos, 1303 líneas | sensores: 17 (FLOW, PRESSURE) | instantes: 96 (calibración 96, validación 0)
+[    0.7s]   parámetro PVC:roughness: roughness/absolute sobre 729 elementos, rango [0.0005, 0.1] log, inicial 0.0015
+[    0.7s]   parámetro PEAD:roughness: roughness/absolute sobre 337 elementos, rango [0.0005, 0.1] log, inicial 0.0015
+[    0.7s]   parámetro VRP_3949706:valve_setting: valve_setting/offset sobre 1 elementos, rango [-8, 3], inicial 0
+[    0.7s]   parámetro TCV_P11:valve_setting: valve_setting/absolute sobre 1 elementos, rango [0, 3000], inicial 2.24
+[    0.7s]   parámetro DEM_Z3949706:demand_multiplier: demand_multiplier/multiplier sobre 521 elementos, rango [0.5, 1.3], inicial 1
+[    0.7s]   parámetro DEM_RESTO:demand_multiplier: demand_multiplier/multiplier sobre 769 elementos, rango [0.7, 1.2], inicial 1
+[    0.9s]   modelo original: PRESSURE=5.959, FLOW=3.916
+[    1.0s]   procesos de simulación en paralelo: 3
+[    1.7s]   sensibilidad PVC:roughness: CSS relativa 0.018
+[    1.7s]   sensibilidad PEAD:roughness: CSS relativa 0.005
+[    1.7s]   sensibilidad VRP_3949706:valve_setting: CSS relativa 0.331
+[    1.7s]   sensibilidad TCV_P11:valve_setting: CSS relativa 0.519
+[    1.7s]   sensibilidad DEM_Z3949706:demand_multiplier: CSS relativa 1.000
+[    1.7s]   sensibilidad DEM_RESTO:demand_multiplier: CSS relativa 0.568
+[    1.7s]   parámetros congelados (no identificables con los sensores actuales): ['PEAD:roughness']
+[    1.7s] [hidráulica] NSGA-II: población 24, generaciones 14, 5 variables
+[    6.0s]   gen   1 | evals    48 | frente   4 | HV 20.848 | mejor por objetivo [3.1569 2.7574]
+[    7.9s]   gen   2 | evals    72 | frente   4 | HV 20.943 | mejor por objetivo [3.1224 2.7574]
+[    9.9s]   gen   3 | evals    96 | frente   7 | HV 21.021 | mejor por objetivo [3.0934 2.7536]
+[   12.0s]   gen   4 | evals   120 | frente   6 | HV 21.318 | mejor por objetivo [3.0934 2.7535]
+[   14.0s]   gen   5 | evals   144 | frente   8 | HV 21.32 | mejor por objetivo [3.0934 2.7533]
+[   16.2s]   gen   6 | evals   168 | frente   9 | HV 21.321 | mejor por objetivo [3.0934 2.7533]
+[   18.3s]   gen   7 | evals   192 | frente   8 | HV 21.335 | mejor por objetivo [3.0934 2.7533]
+[   20.2s]   gen   8 | evals   216 | frente   9 | HV 21.345 | mejor por objetivo [3.0934 2.7533]
+[   22.2s]   gen   9 | evals   240 | frente  11 | HV 21.346 | mejor por objetivo [3.0934 2.7532]
+[   24.2s]   gen  10 | evals   264 | frente   7 | HV 21.448 | mejor por objetivo [3.0888 2.7532]
+[   26.4s]   gen  11 | evals   288 | frente   4 | HV 21.629 | mejor por objetivo [3.0586 2.7532]
+[   28.3s]   gen  12 | evals   312 | frente   6 | HV 21.669 | mejor por objetivo [3.0492 2.7532]
+[   30.6s]   gen  13 | evals   336 | frente   5 | HV 21.737 | mejor por objetivo [3.0335 2.7532]
+[   32.7s]   gen  14 | evals   360 | frente   6 | HV 21.743 | mejor por objetivo [3.0319 2.7532]
+[   33.4s]   frente de Pareto: 6 soluciones; elegida #3 (PRESSURE=3.042, FLOW=2.76, reglas 1/2)
+[   39.1s]   refinamiento local: coste 0.999926 -> 0.997198 (10 iteraciones, estado 0)
+[   39.4s]   la solución refinada no mejora el compromiso: se mantiene la del frente
+[   41.9s]   6 INP del frente de Pareto en /home/user/Claude/casos/VDM/calib_v5/res_a030/pareto
+[   41.9s]   INP calibrado: /home/user/Claude/casos/VDM/calib_v5/res_a030/VDM_a030_calibrado_hidraulica.inp
+[   41.9s] [hidráulica] terminado en 40 s, 783 simulaciones
+[   42.2s]   métricas finales comparadas con el modelo original: PRESSURE 5.959 -> 3.042, FLOW 3.916 -> 2.759
+[   44.9s] INP final: /home/user/Claude/casos/VDM/calib_v5/res_a030/VDM_a030_CALIBRADO.inp
+[   44.9s] Informe:   /home/user/Claude/casos/VDM/calib_v5/res_a030/informe_calibracion.html
