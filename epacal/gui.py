@@ -27,7 +27,7 @@ import numpy as np
 import yaml
 
 APP = "EPACAL"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # ------------------------------------------------------------------ tema
 THEME = {
@@ -506,8 +506,14 @@ class App(ctk.CTk):
         ctk.CTkEntry(vr, textvariable=self.v_valid, width=70, height=32, corner_radius=8).pack(
             side="left", padx=8)
 
-        c3 = card(p, "Parámetros a calibrar", "● activa / desactiva · doble clic para editar tipo, modo y límites")
+        c3 = card(p, "Parámetros a calibrar", "● activa / desactiva · doble clic para editar tipo, modo y "
+                  "límites · cree grupos propios seleccionando elementos en el mapa")
         c3.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(0, 14))
+        tb = ctk.CTkFrame(c3, fg_color="transparent")
+        tb.pack(fill="x", padx=18, pady=(10, 0))
+        primary(tb, "＋  Nuevo grupo desde selección…", lambda: self.open_selector(None), width=250).pack(side="left")
+        secondary(tb, "Editar selección…", self.edit_selection, width=150).pack(side="left", padx=8)
+        secondary(tb, "Quitar grupo", self.remove_group, width=120).pack(side="left")
         f3 = ctk.CTkFrame(c3, fg_color="transparent")
         f3.pack(fill="both", expand=True, padx=18, pady=14)
         self.tv_par = EditableTree(
@@ -537,6 +543,83 @@ class App(ctk.CTk):
             "", "end", values=("NUEVA", "Presión", "absoluto", "2", "80", "80")), width=120).pack(pady=3)
         secondary(rb, "Quitar", lambda: [self.tv_rules.delete(i) for i in self.tv_rules.selection()],
                   width=120).pack(pady=3)
+
+    # ---- grupos definidos por el usuario (selector con mapa)
+    def open_selector(self, iid: Optional[str]):
+        if not self.info:
+            messagebox.showinfo(APP, "Pulse antes «Analizar modelo» en Datos.")
+            return
+        try:
+            self.params = self.read_params()
+        except Exception as exc:
+            messagebox.showerror(APP, str(exc))
+            return
+        from .selector import ElementSelector
+        initial = None
+        if iid is not None:
+            p = self.params[int(iid)]
+            net = self.info["net"]
+            kind = {"roughness": "pipes", "minor_loss": "pipes", "leak_area": "pipes",
+                    "valve_setting": "valves", "reservoir_head": "sources", "tank_level": "sources",
+                    "tank_diameter": "sources"}.get(p["type"], "junctions")
+            if kind in ("pipes", "valves"):
+                ids = [net.link_ids[i] for i in net.select_links(p["select"])]
+            else:
+                ids = [net.node_ids[i] for i in net.select_nodes(p["select"])]
+            initial = dict(p, kind=kind, ids=ids)
+
+        def done(grp):
+            if grp.pop("exclusive", False):
+                for j, q in enumerate(self.params):
+                    if (iid is None or j != int(iid)) and q["type"] == grp["type"]:
+                        sel = dict(q["select"])
+                        sel["exclude_ids"] = sorted(set(sel.get("exclude_ids", [])) | set(grp["ids"]))
+                        q["select"] = sel
+            for k in ("kind", "catalogs", "ids"):
+                grp.pop(k, None)
+            for q in self.params:
+                q["n"] = self.count_elements(q)
+            if iid is None:
+                self.params.append(grp)
+            else:
+                self.params[int(iid)] = grp
+            self.fill_params()
+            self.status.set(f"Grupo {grp['name']}: {grp['n']} elementos, {PARAM_LABEL.get(grp['type'], grp['type'])}.")
+        ElementSelector(self, self.info["net"], self.v_inp.get(), THEME, FONT, done, PARAM_LABEL, initial)
+
+    def count_elements(self, p: dict) -> int:
+        """Número de elementos que resuelve la selección de un grupo (para la tabla)."""
+        from . import engine as en
+        net = self.info["net"]
+        t = p["type"]
+        if t in ("roughness", "minor_loss", "leak_area", "valve_setting"):
+            idx = net.select_links(p["select"])
+            ok = [en.EN_PIPE, en.EN_CVPIPE] if t != "valve_setting" else list(en.VALVE_TYPES)
+            if t == "minor_loss":
+                ok = ok + list(en.VALVE_TYPES)
+            return int(np.isin(net.link_type[idx], ok).sum())
+        idx = net.select_nodes(p["select"])
+        if t in ("reservoir_head",):
+            return int((net.node_type[idx] == en.EN_RESERVOIR).sum())
+        if t in ("tank_level", "tank_diameter"):
+            return int((net.node_type[idx] == en.EN_TANK).sum())
+        return int((net.node_type[idx] == en.EN_JUNCTION).sum())
+
+    def edit_selection(self):
+        sel = self.tv_par.selection()
+        if not sel:
+            messagebox.showinfo(APP, "Seleccione un grupo en la tabla.")
+            return
+        self.open_selector(sel[0])
+
+    def remove_group(self):
+        sel = self.tv_par.selection()
+        if not sel:
+            return
+        self.params = self.read_params()
+        for iid in sorted((int(i) for i in sel), reverse=True):
+            del self.params[iid]
+        self.fill_params()
 
     def fill_params(self):
         self.tv_par.delete(*self.tv_par.get_children())

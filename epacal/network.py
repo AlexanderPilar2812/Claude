@@ -53,6 +53,34 @@ def parse_tags(inp_file: str) -> Dict[str, Dict[str, str]]:
     return tags
 
 
+def parse_coordinates(inp_file: str):
+    """Coordenadas de nudos y vértices de líneas: ({nudo: (x, y)}, {línea: [(x, y), ...]})."""
+    coords, verts = {}, {}
+    section = None
+    with open(inp_file, "r", encoding="utf-8", errors="replace") as fh:
+        for raw in fh:
+            line = raw.split(";", 1)[0].strip()
+            if not line:
+                continue
+            if line.startswith("["):
+                section = line.split()[0].upper()
+                continue
+            if section not in ("[COORDINATES]", "[VERTICES]"):
+                continue
+            t = line.split()
+            if len(t) < 3:
+                continue
+            try:
+                xy = (float(t[1]), float(t[2]))
+            except ValueError:
+                continue
+            if section == "[COORDINATES]":
+                coords[t[0]] = xy
+            else:
+                verts.setdefault(t[0], []).append(xy)
+    return coords, verts
+
+
 _NODE_SECTIONS = {"[JUNCTIONS]", "[RESERVOIRS]", "[TANKS]"}
 _LINK_SECTIONS = {"[PIPES]", "[VALVES]", "[PUMPS]"}
 
@@ -283,6 +311,9 @@ class NetworkInfo:
         if "id_regex" in crit:
             rx = re.compile(crit["id_regex"])
             mask &= np.array([bool(rx.search(x)) for x in self.node_ids])
+        if "exclude_ids" in crit:
+            bad = set(self._as_list(crit["exclude_ids"]))
+            mask &= np.array([x not in bad for x in self.node_ids])
         if "elevation" in crit:
             lo, hi = crit["elevation"]
             mask &= (self.elevation >= float(lo)) & (self.elevation <= float(hi))

@@ -2,8 +2,8 @@
 
 ## Opción recomendada: aplicación de escritorio (instalador)
 
-1. Abra el repositorio en GitHub → **Releases** → **EPACAL 1.1.0 (Windows)** y
-   descargue **`EPACAL-Setup-1.1.0.exe`**.
+1. Abra el repositorio en GitHub → **Releases** → **EPACAL 1.2.0 (Windows)** y
+   descargue **`EPACAL-Setup-1.2.0.exe`**.
 2. Ejecútelo. No pide permisos de administrador ni necesita Python. Si Windows
    SmartScreen avisa ("aplicación no reconocida"), pulse *Más información → Ejecutar
    de todas formas*: el instalador no está firmado digitalmente.
@@ -18,6 +18,26 @@ Uso de la aplicación:
 | **3. Calibrar** | botón **Calibrar**, progreso y registro en vivo; se puede **Cancelar** |
 | **4. Resultados** | frente de Pareto: elegir una solución y **Guardar INP…**; **Abrir informe** |
 | **Avanzado** | configuración completa (YAML) editable y carpeta de plugins |
+
+### Elegir los elementos de cada grupo (como en BGEO/Giswater)
+
+Al pulsar **Analizar modelo**, EPACAL propone grupos automáticos: material del catálogo,
+TCV estranguladas, embalses y tanques. Para crear un grupo propio, vaya a **Ajustes →
+＋ Nuevo grupo desde selección…**. Se abre un selector con el mapa de la red:
+
+1. **Tipo de elemento**: tuberías, válvulas, nudos o tanques/embalses.
+2. **Catálogo / material**: casillas con cada catálogo del INP (PVC100, PEAD150, HG50…).
+3. **Atributos**: rango de diámetro y de rugosidad.
+4. **Lista de IDs**: pegada o cargada desde un CSV (por ejemplo, exportado de QGIS).
+5. **Mapa**: dibuje un **rectángulo** o un **lazo**, en modo *Reemplazar*, *Añadir* o
+   *Quitar*. Con *Navegar* y la barra inferior puede hacer zoom y desplazarse.
+6. **Parámetro del grupo**: rugosidad, consigna, cota, multiplicador…, con sus
+   límites y su escala.
+
+Los filtros se combinan entre sí (Y) y el contador muestra cuántos elementos quedan.
+Con «Quitar estos elementos de otros grupos» marcado, cada elemento pertenece a un solo
+grupo del mismo parámetro: por ejemplo, el PVC de una zona sale del grupo PVC general.
+Para cambiar un grupo existente, selecciónelo en la tabla y pulse **Editar selección…**.
 
 En `Documentos\EPACAL\ejemplos` vienen ZP02EC y el caso del tanque, listos para
 abrir con *Archivo → Abrir configuración*.
