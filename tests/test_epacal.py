@@ -175,3 +175,72 @@ def test_advisor_selects_tank_parameters(tmp_path):
     assert any(n.startswith("METAL") for n in on)
     assert "NIVEL_R1" in off
     assert res["findings"]
+
+
+def _write_gpkg(path, pts):
+    """GeoPackage mínimo de puntos (sin GDAL) para las pruebas."""
+    import sqlite3
+    import struct
+    con = sqlite3.connect(path)
+    con.execute("create table gpkg_contents (table_name text, data_type text)")
+    con.execute("create table gpkg_geometry_columns (table_name text, column_name text)")
+    con.execute("insert into gpkg_contents values ('pts', 'features')")
+    con.execute("insert into gpkg_geometry_columns values ('pts', 'geom')")
+    con.execute("create table pts (fid integer primary key, geom blob, Nombre text)")
+    for name, (x, y) in pts.items():
+        blob = b"GP" + bytes([0, 1]) + struct.pack("<i", 0) + struct.pack("<BIdd", 1, 1, x, y)
+        con.execute("insert into pts (geom, Nombre) values (?, ?)", (blob, name))
+    con.commit()
+    con.close()
+
+
+def test_campaign_cleaning(tmp_path):
+    """Campaña sintética: offset y meseta de instalación, picos, oscilación rápida y nivel fuera del agua."""
+    import openpyxl
+    import pandas as pd
+    from examples.generar_caso_tanque import main as gen_tanque
+    from epacal import campaign as cp
+    from epacal.network import parse_coordinates
+    gen_tanque(str(tmp_path))
+    inp = os.path.join(tmp_path, "modelo_verdad.inp")
+    net = cp.Net(inp)
+    ids = [net.nid.index("J0005"), net.nid.index("J0105")]
+    sim = net.simulate(ids, [])
+    t0 = pd.Timestamp("2026-09-08 00:00")
+    idx = t0 + pd.to_timedelta(sim["t"], unit="s")
+    rng = np.random.default_rng(1)
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    p1 = sim["P"][:, 0] + rng.normal(0, 0.1, len(idx))
+    p1[:8] = -0.3                                  # 2 h a presión atmosférica antes de instalar
+    p1[[100, 200, 300]] += 25                       # picos aislados
+    p2 = sim["P"][:, 1] + rng.normal(0, 0.1, len(idx))
+    p2[:8] = -0.3
+    fast = idx >= t0 + pd.Timedelta("2D")
+    p2[fast] += rng.normal(0, 8.0, fast.sum())     # oscilación más rápida que el registro
+    lvl = np.full(len(idx), -1.8)                   # sensor de nivel fuera del agua
+    for name, kind, vals in (("P1", "Presión (MCA)", p1), ("P2", "Presión (MCA)", p2),
+                             ("Niveles_1", "Nivel (m)", lvl)):
+        ws = wb.create_sheet(name)
+        ws.append(["NIVELES — TANQUE T1" if name.startswith("Niv") else name])
+        ws.append(["Fecha / Hora", kind])
+        for t, v in zip(idx, vals):
+            ws.append([t.to_pydatetime(), float(v)])
+    xls = os.path.join(tmp_path, "campana.xlsx")
+    wb.save(xls)
+    coords, _ = parse_coordinates(inp)
+    gp = os.path.join(tmp_path, "puntos.gpkg")
+    _write_gpkg(gp, {"P1": coords["J0005"], "P2": coords["J0105"], "N1": coords["T1"]})
+    res = cp.run(inp, xls, [gp], os.path.join(tmp_path, "out"),
+                 cfg={"sheets": {"Niveles_1": {"point": "N1"}}}, log=lambda m: None)
+    S = {s.name: s for s in res["sensors"]}
+    s1, s2, n = S["P1"], S["P2"], S["N_T1"]
+    assert s1.element == "J0005" and s2.element == "J0105" and n.element == "T1"
+    assert abs(s1.offset + 0.3) < 0.05 and s1.t_on > t0 + pd.Timedelta("1h")
+    assert (s1.flag == 2).sum() >= 3 and s1.verdict.startswith("Válido")
+    late = s2.flag[t0 + pd.Timedelta("2D 2h"):t0 + pd.Timedelta("3D 20h")]
+    assert (late == 1).mean() > 0.9
+    assert abs(s2.clean[late.index].mean() - sim["P"][:, 1][np.isin(idx, late.index)].mean()) < 1.0
+    assert (n.flag == 9).mean() > 0.9 and "No usar" in n.verdict
+    assert os.path.exists(res["dat"]["PRESSURE"])
+    assert "J0005" in open(res["dat"]["PRESSURE"], encoding="utf-8").read()

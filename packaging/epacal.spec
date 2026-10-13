@@ -22,7 +22,7 @@ a = Analysis(
     datas=collect_data_files("customtkinter"),
     hiddenimports=collect_submodules("epacal") + ["customtkinter", "darkdetect", "scipy.optimize",
                                                   "matplotlib.backends.backend_tkagg", "matplotlib.backends.backend_agg",
-                                                  "yaml", "pandas", "numpy"],
+                                                  "yaml", "pandas", "numpy", "openpyxl"],
     excludes=["wntr", "networkx", "epyt", "pytest", "IPython", "jupyter", "notebook",
               "PyQt5", "PyQt6", "PySide2", "PySide6", "sphinx", "examples", "tests"],
     noarchive=False,

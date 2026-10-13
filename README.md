@@ -20,7 +20,7 @@ Hace lo mismo que los módulos de calibración de Giswater y añade varias cosas
 | Varios sectores | sí | sí. Si un patrón lo comparten varios sectores, se crea una copia por sector |
 | Qué elementos calibrar | los elige el usuario a mano | **asistente inteligente**: decide desde el INP y las medidas (energía disipada, influencia frente al ruido, grupos indistinguibles, parámetros confundidos) y explica cada decisión |
 
-> **Aplicación de escritorio para Windows:** instalador `EPACAL-Setup-1.3.0.exe` en *Releases*. Guía paso a paso: [INSTALACION.md](INSTALACION.md). Ampliable con plugins (`plugins/ejemplo_plugin.py`).
+> **Aplicación de escritorio para Windows:** instalador `EPACAL-Setup-1.4.0.exe` en *Releases*. Guía paso a paso: [INSTALACION.md](INSTALACION.md). Ampliable con plugins (`plugins/ejemplo_plugin.py`).
 
 ## Instalación (EPANET 2.2)
 
@@ -156,6 +156,30 @@ El patrón se corrige en cada periodo con `m'(p) = m(p) · (Q_entrada(p) − L(p
 hasta cumplir el objetivo y la tolerancia del patrón. Por defecto, el caudal de entrada
 de referencia es la demanda del modelo original, que es la misma hipótesis que usa
 Giswater. Si se dispone del caudalímetro, puede usarse la serie medida (`inflow_file`).
+
+## Análisis y depuración de campañas (`epacal/campaign.py`)
+
+```bash
+python -m epacal.campaign --inp modelo.inp --excel campaña.xlsx --gpkg puntos.gpkg caudalimetros.gpkg --out campaña
+```
+
+Lee el Excel (una hoja por equipo) y los puntos GPKG, y ubica cada equipo en el INP.
+
+1. **Corrige** el offset, la instalación y el retiro, y la hora de cada logger.
+2. **Detecta**:
+   - cortes y tanques vacíos con la salida cerrada;
+   - oscilación más rápida que el registro;
+   - sensores congelados o fuera del agua;
+   - regímenes de operación distintos.
+3. **Contrasta con el modelo**:
+   - VRP que no regulan, y consigna real por zona;
+   - sensores al otro lado de una VRP;
+   - balance de masa de los tanques.
+4. **Reemplaza** cada dato malo según su causa: envolvente, interpolación, perfil típico o
+   balance de masa. Cada dato queda marcado.
+
+Genera un informe HTML, un Excel depurado y los `.dat` de día tipo para la calibración.
+En la aplicación es la pestaña **Campaña**.
 
 ## Asistente inteligente (`epacal/advisor.py`)
 

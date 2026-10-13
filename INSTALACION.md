@@ -2,8 +2,8 @@
 
 ## Opción recomendada: aplicación de escritorio (instalador)
 
-1. Abra el repositorio en GitHub → **Releases** → **EPACAL 1.3.0 (Windows)** y
-   descargue **`EPACAL-Setup-1.3.0.exe`**.
+1. Abra el repositorio en GitHub → **Releases** → **EPACAL 1.4.0 (Windows)** y
+   descargue **`EPACAL-Setup-1.4.0.exe`**.
 2. Ejecútelo. No pide permisos de administrador ni necesita Python. Si Windows
    SmartScreen avisa ("aplicación no reconocida"), pulse *Más información → Ejecutar
    de todas formas*: el instalador no está firmado digitalmente.
@@ -13,12 +13,67 @@ Uso de la aplicación:
 
 | Pestaña | Qué se hace |
 |---|---|
-| **1. Datos** | elegir el INP, añadir los ficheros de medidas (presión, caudal, nivel) y la carpeta de resultados; pulsar **✦ Asistente inteligente** (o **Análisis rápido**) |
-| **2. Diagnóstico** | lo que el asistente encontró: sesgos, amplitud, sensores sospechosos, parámetros que no se pueden separar |
-| **3. Ajustes** | % de pérdidas, parámetros a calibrar (detectados solos desde el INP; clic en ✓ para activar, doble clic para editar los límites), objetivos, tipo de calibración y reglas de aceptación |
-| **4. Calibrar** | botón **Calibrar**, progreso y registro en vivo; se puede **Cancelar** |
-| **5. Resultados** | frente de Pareto: elegir una solución y **Guardar INP…**; **Abrir informe** |
+| **1. Campaña** | (opcional) el Excel de la campaña y los puntos GPKG: qué pasó, qué datos valen, cuáles se reemplazan; **Usar los datos depurados** los pasa a Datos |
+| **2. Datos** | elegir el INP, añadir los ficheros de medidas (presión, caudal, nivel) y la carpeta de resultados; pulsar **✦ Asistente inteligente** (o **Análisis rápido**) |
+| **3. Diagnóstico** | lo que el asistente encontró: sesgos, amplitud, sensores sospechosos, parámetros que no se pueden separar |
+| **4. Ajustes** | % de pérdidas, parámetros a calibrar (detectados solos desde el INP; clic en ✓ para activar, doble clic para editar los límites), objetivos, tipo de calibración y reglas de aceptación |
+| **5. Calibrar** | botón **Calibrar**, progreso y registro en vivo; se puede **Cancelar** |
+| **6. Resultados** | frente de Pareto: elegir una solución y **Guardar INP…**; **Abrir informe** |
 | **Avanzado** | configuración completa (YAML) editable y carpeta de plugins |
+
+### Campaña: qué pasó, qué datos tomar y cómo reemplazar los malos
+
+En **Campaña** se elige el INP, el Excel de la campaña (una hoja por equipo, con una fila de
+cabecera que empieza por «Fecha» y los valores en MCA, m o L/s) y los GeoPackage con los
+puntos de medición (presión, caudalímetros y niveles). Al pulsar **✦ Analizar campaña**:
+
+1. **Ubica cada equipo en el modelo**:
+   - presión → el nudo más cercano;
+   - caudal → la tubería más cercana;
+   - nivel → el tanque o embalse.
+
+   Los caudalímetros se emparejan por número (Q1 → C1). Los niveles se emparejan por el
+   nombre del tanque que aparece en los títulos.
+2. **Limpia cada serie**:
+   - quita el offset de cero, leído en la meseta a presión atmosférica antes de instalar;
+   - corta la instalación y el retiro del equipo;
+   - lleva todos los equipos a la misma hora, porque cada logger registra en un segundo distinto.
+3. **Detecta los problemas**:
+   - cortes (varios sensores caen a cero a la vez);
+   - un sensor que se queda sin presión;
+   - picos aislados y sensores congelados;
+   - **oscilación más rápida que el registro** (VRP que bombea, aire);
+   - **sensor de nivel fuera del agua**;
+   - **tanque vacío**, con su salida cerrada para recuperarlo.
+4. **Encuentra los regímenes de operación**: grupos de días que se comportan igual. Propone
+   como periodo de calibración el régimen estable más largo, porque un modelo representa
+   una sola forma de operar la red.
+5. **Lo contrasta con el INP**:
+   - zonas de presión separadas por las VRP;
+   - VRP que no regulan, con la carga medida por encima de la consigna;
+   - consigna real de la VRP, cuando todos los sensores de su zona tienen la misma diferencia;
+   - sensores que están al otro lado de una VRP o en otra zona;
+   - balance de masa de cada tanque con sus caudalímetros de entrada y salida, para
+     detectar rebose, una salida no medida o un medidor que mide mal.
+6. **Reemplaza** solo lo que hace falta, y marca cada dato en el Excel:
+
+| marca | método | cuándo |
+|---|---|---|
+| 0 | válido | dato medido, sin tocar |
+| 1 | envolvente (media recortada de 2 h, o 4 h si la oscilación es fuerte) | días con un salto mediano entre lecturas de más de 3 m: esa oscilación no la reproduce un modelo |
+| 2 | interpolado | pico aislado o hueco ≤ 1 h |
+| 3 | perfil típico del propio sensor, ajustado a los extremos | hueco de 1 a 6 h |
+| 4 | balance de masa | nivel de tanque sin dato, reconstruido con los caudales de entrada y salida (solo forma) |
+| 9 | excluido | sin instalar, corte, sensor fuera del agua |
+
+Resultados en la carpeta `campaña_<excel>`:
+
+- `informe_campaña.html`: el relato, los eventos y una gráfica por sensor (medido,
+  depurado, modelo y día tipo).
+- `campaña_depurada.xlsx`: el resumen, los eventos, una hoja por sensor con la marca y el
+  motivo de cada dato, y el día tipo.
+- `calibr_presion.dat` / `calibr_caudal.dat`: el día tipo del periodo de calibración. Los
+  sensores que hay que revisar no se incluyen.
 
 ### Asistente inteligente: qué calibrar, decidido desde el INP y las medidas
 

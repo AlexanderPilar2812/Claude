@@ -27,7 +27,7 @@ import numpy as np
 import yaml
 
 APP = "EPACAL"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 # ------------------------------------------------------------------ tema
 THEME = {
@@ -62,11 +62,12 @@ PRESET_HELP = {"rapida": "Para en cuanto una solución cumple todas las reglas (
                "exhaustiva": "Frente más denso y más generaciones (≈15 min)."}
 OBJ_LABEL = {"PRESSURE": "Error de presión", "FLOW": "Error de caudal", "LEVEL": "Error de nivel",
              "CAMBIO": "Cambio respecto al modelo original"}
-PAGES = [("datos", "1", "Datos", "Modelo y medidas de campo"),
-         ("diagnostico", "2", "Diagnóstico", "Lo que el asistente encontró en el modelo y en las medidas"),
-         ("ajustes", "3", "Ajustes", "Pérdidas, parámetros y reglas de aceptación"),
-         ("calibrar", "4", "Calibrar", "Ejecución y progreso"),
-         ("resultados", "5", "Resultados", "Frente de Pareto: elija su calibración"),
+PAGES = [("campana", "1", "Campaña", "Qué pasó en la campaña, qué datos valen y cómo reemplazar los malos"),
+         ("datos", "2", "Datos", "Modelo y medidas de campo"),
+         ("diagnostico", "3", "Diagnóstico", "Lo que el asistente encontró en el modelo y en las medidas"),
+         ("ajustes", "4", "Ajustes", "Pérdidas, parámetros y reglas de aceptación"),
+         ("calibrar", "5", "Calibrar", "Ejecución y progreso"),
+         ("resultados", "6", "Resultados", "Frente de Pareto: elija su calibración"),
          ("avanzado", "⚙", "Avanzado", "Configuración YAML y plugins")]
 
 
@@ -214,6 +215,7 @@ class App(ctk.CTk):
         self._page_results()
         self._page_advanced()
         self._page_diagnosis()
+        self._page_campaign()
         self.status = tk.StringVar(value="Elija el modelo INP y los ficheros de medidas para empezar.")
         ctk.CTkLabel(self.content, textvariable=self.status, font=(FONT, 11),
                      text_color=THEME["muted"], anchor="w").grid(row=2, column=0, sticky="we",
@@ -311,12 +313,14 @@ class App(ctk.CTk):
 
     def help(self):
         messagebox.showinfo("Cómo se usa EPACAL", (
-            "1 · Datos: elija el INP y añada las medidas (.dat de EPANET: id  hora  valor) "
+            "1 · Campaña (opcional): Excel de la campaña + puntos GPKG → qué pasó, qué datos valen "
+            "y cuáles se reemplazan; «Usar los datos depurados» los pasa a Datos.\n\n"
+            "2 · Datos: elija el INP y añada las medidas (.dat de EPANET: id  hora  valor) "
             "indicando presión, caudal o nivel. Pulse «Analizar modelo».\n\n"
-            "2 · Ajustes: % de pérdidas, parámetros (● activa/desactiva, doble clic edita), "
+            "3–4 · Diagnóstico y Ajustes: % de pérdidas, parámetros (● activa/desactiva, doble clic edita), "
             "tipo de calibración, objetivos y reglas de aceptación.\n\n"
-            "3 · Calibrar: pulse «Calibrar». Puede cancelar en cualquier momento.\n\n"
-            "4 · Resultados: haga clic en un punto del frente o en una fila y pulse "
+            "5 · Calibrar: pulse «Calibrar». Puede cancelar en cualquier momento.\n\n"
+            "6 · Resultados: haga clic en un punto del frente o en una fila y pulse "
             "«Guardar INP». ★ = recomendada.\n\n"
             f"Plugins (.py) en {os.path.join(user_home(), 'plugins')}"))
 
@@ -490,6 +494,122 @@ class App(ctk.CTk):
         self.fill_diagnosis(res)
         self.status.set("Asistente: propuesta lista. Revise el diagnóstico y los parámetros propuestos.")
         self.show("diagnostico")
+
+    # ------------------------------------------------------------- campaña
+    def _page_campaign(self):
+        p = self.pages["campana"]
+        p.grid_columnconfigure(0, weight=3)
+        p.grid_columnconfigure(1, weight=2)
+        p.grid_rowconfigure(1, weight=1)
+        self.v_c_xls, self.v_c_out = tk.StringVar(), tk.StringVar()
+        self.c_gpkg: List[str] = []
+        self.camp = None
+        top = card(p, "Ficheros de la campaña", "Modelo INP (el de «Datos»), Excel con una hoja por equipo "
+                   "y los puntos de medición en GeoPackage (.gpkg).")
+        top.grid(row=0, column=0, columnspan=2, sticky="we", pady=(0, 12))
+        g = ctk.CTkFrame(top, fg_color="transparent")
+        g.pack(fill="x", padx=18, pady=12)
+        g.grid_columnconfigure(1, weight=1)
+        for i, (lab, var, cmd) in enumerate((("Modelo INP", self.v_inp, self.pick_inp),
+                                             ("Excel de medidas", self.v_c_xls, self.pick_c_xls))):
+            ctk.CTkLabel(g, text=lab, font=(FONT, 12), text_color=THEME["muted"], width=130,
+                         anchor="w").grid(row=i, column=0, sticky="w", pady=4)
+            ctk.CTkEntry(g, textvariable=var, height=36, corner_radius=10, font=(FONT, 12)).grid(
+                row=i, column=1, sticky="we", pady=4)
+            secondary(g, "Examinar…", cmd, width=120).grid(row=i, column=2, padx=(10, 0), pady=4)
+        ctk.CTkLabel(g, text="Puntos (GPKG)", font=(FONT, 12), text_color=THEME["muted"], width=130,
+                     anchor="w").grid(row=2, column=0, sticky="w", pady=4)
+        self.v_c_gpkg = tk.StringVar(value="—")
+        ctk.CTkLabel(g, textvariable=self.v_c_gpkg, font=(FONT, 12), text_color=THEME["ink"],
+                     anchor="w").grid(row=2, column=1, sticky="we", pady=4)
+        secondary(g, "Añadir…", self.pick_c_gpkg, width=120).grid(row=2, column=2, padx=(10, 0), pady=4)
+        bar = ctk.CTkFrame(top, fg_color="transparent")
+        bar.pack(fill="x", padx=18, pady=(0, 14))
+        primary(bar, "✦  Analizar campaña", self.run_campaign, width=210).pack(side="left")
+        secondary(bar, "Abrir informe", lambda: open_path(self.camp and self.camp["files"][-1]),
+                  width=140).pack(side="left", padx=10)
+        secondary(bar, "Abrir Excel depurado", lambda: open_path(self.camp and self.camp["files"][0]),
+                  width=170).pack(side="left")
+        primary(bar, "Usar los datos depurados  →", self.use_campaign, width=240).pack(side="right")
+
+        sc = card(p, "Qué pasó probablemente", "Interpretación de la campaña con la red del INP")
+        sc.grid(row=1, column=0, sticky="nsew", padx=(0, 7))
+        self.c_story = ctk.CTkTextbox(sc, font=(FONT, 12), wrap="word", fg_color="transparent",
+                                      text_color=THEME["ink"])
+        self.c_story.pack(fill="both", expand=True, padx=12, pady=10)
+        tc = card(p, "Qué datos tomar", "Periodo de calibración y uso de cada sensor")
+        tc.grid(row=1, column=1, sticky="nsew", padx=(7, 0))
+        self.v_c_win = tk.StringVar(value="")
+        ctk.CTkLabel(tc, textvariable=self.v_c_win, font=(FONT, 12, "bold"), text_color=THEME["accent"],
+                     anchor="w").pack(fill="x", padx=14, pady=(8, 0))
+        self.tv_camp = ttk.Treeview(tc, show="headings", style="Epa.Treeview",
+                                    columns=("s", "t", "e", "v", "f", "r", "x", "u"))
+        for c, h, w in (("s", "Sensor", 80), ("t", "Tipo", 65), ("e", "Elemento", 105), ("v", "% válido", 62),
+                        ("f", "% suav.", 58), ("r", "% reempl.", 66), ("x", "% excl.", 56), ("u", "Uso", 230)):
+            self.tv_camp.heading(c, text=h)
+            self.tv_camp.column(c, width=w, anchor="w")
+        self.tv_camp.pack(fill="both", expand=True, padx=12, pady=10)
+
+    def pick_c_xls(self):
+        f = filedialog.askopenfilename(title="Excel de la campaña", filetypes=[("Excel", "*.xlsx *.xlsm")])
+        if f:
+            self.v_c_xls.set(f)
+
+    def pick_c_gpkg(self):
+        fs = filedialog.askopenfilenames(title="Puntos de medición", filetypes=[("GeoPackage", "*.gpkg")])
+        self.c_gpkg += [f for f in fs if f not in self.c_gpkg]
+        self.v_c_gpkg.set(" · ".join(os.path.basename(f) for f in self.c_gpkg) or "—")
+
+    def run_campaign(self):
+        inp, xls = self.v_inp.get(), self.v_c_xls.get()
+        if not (os.path.isfile(inp) and os.path.isfile(xls)):
+            messagebox.showerror(APP, "Elija el INP y el Excel de la campaña.")
+            return
+        if self.worker and self.worker.is_alive():
+            return
+        out = os.path.join(os.path.dirname(xls), "campaña_" + os.path.splitext(os.path.basename(xls))[0])
+        self.status.set("Campaña: leyendo medidas, ubicando sensores y comparando con el modelo…")
+
+        def work():
+            try:
+                from .campaign import run as run_c
+                from . import engine as en
+                res = run_c(inp, xls, list(self.c_gpkg), out, lib=en._find_library(None, "2.2"),
+                            log=lambda m: self.q.put(("status", "Campaña: " + m.strip())))
+                self.q.put(("campaign", res))
+            except Exception as exc:
+                self.q.put(("error_adv", f"{exc}\n\n{traceback.format_exc()}"))
+        self.worker = threading.Thread(target=work, daemon=True)
+        self.worker.start()
+
+    def apply_campaign(self, res):
+        self.camp = res
+        self.c_story.delete("1.0", "end")
+        for i, t in enumerate(res["story"], 1):
+            self.c_story.insert("end", f"{i}. {re.sub(r'<[^>]+>', '', t)}\n\n")
+        a, b = res["window"]
+        self.v_c_win.set(f"Periodo de calibración: {a:%d/%m %H:%M} – {b:%d/%m %H:%M}")
+        self.tv_camp.delete(*self.tv_camp.get_children())
+        for s in res["sensors"]:
+            pct = getattr(s, "pct", {})
+            self.tv_camp.insert("", "end", values=(
+                s.name, {"PRESSURE": "Presión", "FLOW": "Caudal", "LEVEL": "Nivel"}[s.kind], s.element or "—",
+                f"{pct.get(0, 0):.0f}", f"{pct.get(1, 0):.0f}",
+                f"{pct.get(2, 0) + pct.get(3, 0) + pct.get(4, 0):.0f}", f"{pct.get(9, 0):.0f}", s.verdict))
+        self.status.set("Campaña analizada: revise el relato y la tabla; «Usar los datos depurados» "
+                        "los pasa a «Datos» como día tipo.")
+
+    def use_campaign(self):
+        if not self.camp:
+            messagebox.showinfo(APP, "Analice primero la campaña.")
+            return
+        for i in self.tv_obs.get_children():
+            self.tv_obs.delete(i)
+        for kind, f in self.camp["dat"].items():
+            self.add_obs(kind, [f])
+        self.show("datos")
+        self.status.set("Medidas depuradas cargadas (día tipo del periodo de calibración). "
+                        "Pulse «✦ Asistente inteligente».")
 
     def _page_diagnosis(self):
         p = self.pages["diagnostico"]
@@ -925,6 +1045,9 @@ class App(ctk.CTk):
                     continue
                 if kind == "advice":
                     self.apply_advice(payload)
+                    continue
+                if kind == "campaign":
+                    self.apply_campaign(payload)
                     continue
                 if kind == "error_adv":
                     messagebox.showerror(APP, "El asistente falló:\n" + payload.split("\n\n")[0])

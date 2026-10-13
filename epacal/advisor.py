@@ -185,7 +185,8 @@ def advise(inp: str, obs_files: List[Tuple[str, str]], lib: Optional[str] = None
             if vt == "TCV":
                 mode, b, lg = ("multiplier", [0.05, 5.0], True) if st > 0 else ("absolute", [0.0, 50.0], False)
             elif vt in ("PRV", "PSV"):
-                mode, b, lg = "offset", [-5.0, 5.0], False
+                # la consigna no puede quedar negativa (p. ej. VRP de entrada a tanque de 2,45 m)
+                mode, b, lg = "offset", [-min(5.0, max(st - 0.1, 0.0)), 5.0], False
             else:
                 mode, b, lg = "multiplier", [0.5, 2.0], False
             cands.append({"name": f"VALV_{lid}", "type": "valve_setting", "mode": mode, "log": lg,
