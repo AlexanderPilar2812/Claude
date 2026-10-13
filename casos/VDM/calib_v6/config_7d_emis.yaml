@@ -1,0 +1,44 @@
+# Calibración ZP-05 sin modificar patrones de demanda ni rugosidades
+name: VDM_v6
+inp: Mod_VDM_v6_emis.inp
+output_dir: resultados_7d_emis
+workers: 0
+epanet_version: "2.2"
+
+groups:
+  PVC:           {select: {catalog_regex: "^PVC", link_type: PIPE}}
+  PEAD:          {select: {catalog_regex: "^PEAD", link_type: PIPE}}
+  VRP_3949706:   {select: {ids: [3949706_n2a]}}        # alimenta P3, P4, P9, L1
+  TCV_P11:       {select: {ids: [3949364_n2a]}}        # pérdida antes de P11 (aire / válvula)
+  DEM_Z3949706:  {select: {ids_file: zonas.csv, group: Z_VRP3949706}}
+  DEM_RESTO:     {select: {ids_file: zonas.csv, group: RESTO}}
+  FUGAS_Z3949706: {select: {ids_file: zonas.csv, group: Z_VRP3949706, exclude_ids: [3949467]}}
+
+observations:
+  files:
+    - {file: calibr_caudal_7d.dat,  type: FLOW}       # Q1, Q3, Q4 (Q2 excluido: el medidor lee +26 %)
+    - {file: calibr_presion_7d.dat, type: PRESSURE}   # día tipo 12-16/09, presión en la cota del nudo
+  start: "2026-09-12 00:00:00"
+  step: 900
+  warmup: 0
+
+hydraulic:
+  objectives: [PRESSURE, FLOW]
+  metric: rmse
+  parameters:
+    - {group: VRP_3949706,  type: valve_setting,     mode: offset, bounds: [-8.0, 3.0]}
+    - {group: TCV_P11,      type: valve_setting,     bounds: [0.0, 3000.0]}
+    - {group: DEM_Z3949706, type: demand_multiplier, bounds: [0.05, 1.3]}
+    - {group: FUGAS_Z3949706, type: emitter_multiplier, bounds: [0.0, 2.0]}
+    - {group: DEM_RESTO,    type: demand_multiplier, bounds: [0.7, 1.2]}
+  sensitivity: {enabled: true, freeze_below: 0.01}
+  optimizer: {goal: pareto, pop_size: 28, n_gen: 18, seed: 1, stall_gens: 5, max_front: 12}
+  selection: knee
+  local_search: {enabled: true, max_iter: 10}
+
+acceptance:
+  - {name: CAUDAL,  kind: FLOW,     error: relative, threshold: 15, timesteps_pct: 75, points_pct: 100}
+  - {name: PRESION, kind: PRESSURE, error: absolute, threshold: 5,  timesteps_pct: 80, points_pct: 80}
+
+workflow:
+  mode: hydraulic
