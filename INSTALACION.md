@@ -2,8 +2,8 @@
 
 ## Opción recomendada: aplicación de escritorio (instalador)
 
-1. Abra el repositorio en GitHub → **Releases** → **EPACAL 1.2.0 (Windows)** y
-   descargue **`EPACAL-Setup-1.2.0.exe`**.
+1. Abra el repositorio en GitHub → **Releases** → **EPACAL 1.3.0 (Windows)** y
+   descargue **`EPACAL-Setup-1.3.0.exe`**.
 2. Ejecútelo. No pide permisos de administrador ni necesita Python. Si Windows
    SmartScreen avisa ("aplicación no reconocida"), pulse *Más información → Ejecutar
    de todas formas*: el instalador no está firmado digitalmente.
@@ -13,15 +13,52 @@ Uso de la aplicación:
 
 | Pestaña | Qué se hace |
 |---|---|
-| **1. Datos** | elegir el INP, añadir los ficheros de medidas (presión, caudal, nivel) y la carpeta de resultados; pulsar **Analizar modelo** |
-| **2. Ajustes** | % de pérdidas, parámetros a calibrar (detectados solos desde el INP; clic en ✓ para activar, doble clic para editar los límites), objetivos, tipo de calibración y reglas de aceptación |
-| **3. Calibrar** | botón **Calibrar**, progreso y registro en vivo; se puede **Cancelar** |
-| **4. Resultados** | frente de Pareto: elegir una solución y **Guardar INP…**; **Abrir informe** |
+| **1. Datos** | elegir el INP, añadir los ficheros de medidas (presión, caudal, nivel) y la carpeta de resultados; pulsar **✦ Asistente inteligente** (o **Análisis rápido**) |
+| **2. Diagnóstico** | lo que el asistente encontró: sesgos, amplitud, sensores sospechosos, parámetros que no se pueden separar |
+| **3. Ajustes** | % de pérdidas, parámetros a calibrar (detectados solos desde el INP; clic en ✓ para activar, doble clic para editar los límites), objetivos, tipo de calibración y reglas de aceptación |
+| **4. Calibrar** | botón **Calibrar**, progreso y registro en vivo; se puede **Cancelar** |
+| **5. Resultados** | frente de Pareto: elegir una solución y **Guardar INP…**; **Abrir informe** |
 | **Avanzado** | configuración completa (YAML) editable y carpeta de plugins |
 
-### Elegir los elementos de cada grupo (como en BGEO/Giswater)
+### Asistente inteligente: qué calibrar, decidido desde el INP y las medidas
 
-Al pulsar **Analizar modelo**, EPACAL propone grupos automáticos: material del catálogo,
+En BGEO o Giswater el usuario elige a mano qué grupos calibrar. EPACAL puede hacerlo
+solo. Al pulsar **✦ Asistente inteligente** (1–3 min):
+
+1. **Simula el modelo original** frente a las medidas y diagnostica el error:
+   - sesgo común de presión, que apunta al nivel del depósito o a una consigna;
+   - un sensor con un sesgo distinto al resto, que apunta a su cota o a una válvula cerrada;
+   - oscilación diaria amortiguada o exagerada, que apunta a rugosidad o válvulas;
+   - error en el caudal de entrada, que apunta a la demanda o a las pérdidas.
+2. **Reparte la energía disipada** (caudal × pérdida de carga) por material, válvula y
+   zona. Un material que apenas disipa energía no puede corregir presiones, así que no
+   se calibra. Los materiales que sí la disipan se separan en red principal (≥ 150 mm)
+   y de distribución.
+3. **Mide la influencia real** de cada candidato en los sensores, con el parámetro en
+   sus extremos, y la compara con el ruido de medida: 0,15 m en presión, 0,05 m en
+   nivel y 2 % en caudal. Solo se proponen los que superan 2 veces el ruido.
+4. **Agrupa o separa** los candidatos:
+   - une los grupos que producen la misma respuesta (indistinguibles);
+   - divide una familia grande en zonas si las zonas responden distinto.
+5. **Detecta parámetros confundidos**, como el nivel del embalse y la válvula de
+   entrada cuando tienen el mismo efecto, y fija uno para que la calibración no
+   «invente» valores.
+
+Los parámetros descartados quedan en la tabla, desactivados, con su **motivo**, por
+ejemplo «disipa el 0,0 % de la energía» o «efecto 0,8 veces el ruido». Se pueden
+reactivar con un clic.
+
+Resultados de validación:
+
+- **ZP02EC**: de 26 candidatos propone 3: la TCV 3934058_n2a, la TCV de entrada y el
+  nivel del depósito. Con ellos se llega al mismo error (1,12 m) que con la selección
+  manual de 6 grupos.
+- **Caso del tanque**: recupera los valores reales sin ninguna selección manual
+  (rugosidad 1,90; TCV 18; nivel inicial 3,0 m; diámetro 24 m).
+
+### Elegir los elementos de cada grupo a mano (como en BGEO/Giswater)
+
+Con **Análisis rápido**, EPACAL propone grupos por catálogo, sin medir su influencia: material del catálogo,
 TCV estranguladas, embalses y tanques. Para crear un grupo propio, vaya a **Ajustes →
 ＋ Nuevo grupo desde selección…**. Se abre un selector con el mapa de la red:
 

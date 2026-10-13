@@ -18,8 +18,9 @@ Hace lo mismo que los módulos de calibración de Giswater y añade varias cosas
 | Reparto de fugas | por nudo | por longitud, uniforme, por demanda o desde fichero, con factores por familia (p. ej. metal antiguo ×2). Con EPANET 2.3, también FAVAD por tubería |
 | Pérdidas ↔ hidráulica | procesos separados: al cambiar la rugosidad, las fugas dejan de cumplir el objetivo | **balance de pérdidas embebido**: en cada candidato se re-equilibran emisores y patrón para que el objetivo de pérdidas y el caudal de entrada se cumplan siempre (opcionalmente, más rondas acopladas) |
 | Varios sectores | sí | sí. Si un patrón lo comparten varios sectores, se crea una copia por sector |
+| Qué elementos calibrar | los elige el usuario a mano | **asistente inteligente**: decide desde el INP y las medidas (energía disipada, influencia frente al ruido, grupos indistinguibles, parámetros confundidos) y explica cada decisión |
 
-> **Aplicación de escritorio para Windows:** instalador `EPACAL-Setup-1.2.0.exe` en *Releases*. Guía paso a paso: [INSTALACION.md](INSTALACION.md). Ampliable con plugins (`plugins/ejemplo_plugin.py`).
+> **Aplicación de escritorio para Windows:** instalador `EPACAL-Setup-1.3.0.exe` en *Releases*. Guía paso a paso: [INSTALACION.md](INSTALACION.md). Ampliable con plugins (`plugins/ejemplo_plugin.py`).
 
 ## Instalación (EPANET 2.2)
 
@@ -155,6 +156,30 @@ El patrón se corrige en cada periodo con `m'(p) = m(p) · (Q_entrada(p) − L(p
 hasta cumplir el objetivo y la tolerancia del patrón. Por defecto, el caudal de entrada
 de referencia es la demanda del modelo original, que es la misma hipótesis que usa
 Giswater. Si se dispone del caudalímetro, puede usarse la serie medida (`inflow_file`).
+
+## Asistente inteligente (`epacal/advisor.py`)
+
+```python
+from epacal.advisor import advise
+res = advise("modelo.inp", [("calibr_presion.dat", "PRESSURE"), ("calibr_caudal.dat", "FLOW")])
+res["params"]     # parámetros propuestos ("use": True) y descartados, cada uno con su "reason"
+res["findings"]   # diagnóstico: sesgo común, sensor anómalo, amplitud, caudal, confusiones
+```
+
+Pasos del asistente:
+
+1. Diagnostica el modelo original frente a las medidas: sesgo, amplitud y correlación
+   de cada sensor.
+2. Reparte la energía disipada (|Q·hf|) por material (principal ≥ 150 mm o de
+   distribución), válvula, embalse y tanque.
+3. Mide la influencia de cada candidato en los extremos de su rango y la compara con
+   el ruido de medida. Solo se calibra lo que supera 2 veces el ruido.
+4. Une los grupos con respuesta indistinguible (correlación > 0,97) y divide en zonas
+   (k-means) las familias cuyas zonas responden distinto.
+5. Fija uno de cada par de parámetros confundidos (|r| > 0,90 con perturbación local).
+
+En la aplicación, el botón **✦ Asistente inteligente** abre la pestaña *Diagnóstico*
+y rellena la tabla de parámetros con la columna *Motivo*.
 
 ## Calibración del nivel de tanques
 

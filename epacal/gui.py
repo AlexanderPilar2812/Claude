@@ -27,7 +27,7 @@ import numpy as np
 import yaml
 
 APP = "EPACAL"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # ------------------------------------------------------------------ tema
 THEME = {
@@ -63,9 +63,10 @@ PRESET_HELP = {"rapida": "Para en cuanto una solución cumple todas las reglas (
 OBJ_LABEL = {"PRESSURE": "Error de presión", "FLOW": "Error de caudal", "LEVEL": "Error de nivel",
              "CAMBIO": "Cambio respecto al modelo original"}
 PAGES = [("datos", "1", "Datos", "Modelo y medidas de campo"),
-         ("ajustes", "2", "Ajustes", "Pérdidas, parámetros y reglas de aceptación"),
-         ("calibrar", "3", "Calibrar", "Ejecución y progreso"),
-         ("resultados", "4", "Resultados", "Frente de Pareto: elija su calibración"),
+         ("diagnostico", "2", "Diagnóstico", "Lo que el asistente encontró en el modelo y en las medidas"),
+         ("ajustes", "3", "Ajustes", "Pérdidas, parámetros y reglas de aceptación"),
+         ("calibrar", "4", "Calibrar", "Ejecución y progreso"),
+         ("resultados", "5", "Resultados", "Frente de Pareto: elija su calibración"),
          ("avanzado", "⚙", "Avanzado", "Configuración YAML y plugins")]
 
 
@@ -212,6 +213,7 @@ class App(ctk.CTk):
         self._page_run()
         self._page_results()
         self._page_advanced()
+        self._page_diagnosis()
         self.status = tk.StringVar(value="Elija el modelo INP y los ficheros de medidas para empezar.")
         ctk.CTkLabel(self.content, textvariable=self.status, font=(FONT, 11),
                      text_color=THEME["muted"], anchor="w").grid(row=2, column=0, sticky="we",
@@ -366,7 +368,8 @@ class App(ctk.CTk):
         ctk.CTkEntry(r3, textvariable=self.v_out, height=38, corner_radius=10,
                      font=(FONT, 12)).grid(row=0, column=1, sticky="we")
         secondary(r3, "Examinar…", self.pick_out, width=120).grid(row=0, column=2, padx=10)
-        primary(r3, "Analizar modelo  →", self.analyze, width=200).grid(row=0, column=3)
+        secondary(r3, "Análisis rápido", self.analyze, width=140).grid(row=0, column=3, padx=(0, 10))
+        primary(r3, "✦  Asistente inteligente", self.run_advisor, width=230).grid(row=0, column=4)
         self.summary = ctk.CTkFrame(c3, fg_color="transparent", height=4)
         self.summary.pack(fill="x", padx=18, pady=(0, 14))
 
@@ -417,7 +420,7 @@ class App(ctk.CTk):
         return [(self.tv_obs.set(i, "file"), inv.get(self.tv_obs.set(i, "type"), "PRESSURE"))
                 for i in self.tv_obs.get_children()]
 
-    def analyze(self):
+    def analyze(self, quiet: bool = False):
         inp = self.v_inp.get()
         if not os.path.isfile(inp):
             messagebox.showerror(APP, "Elija primero un fichero INP válido.")
@@ -453,7 +456,92 @@ class App(ctk.CTk):
         for k, v in self.obj_vars.items():
             v.set(k in objs)
         self.fill_rules(ac.default_rules(kinds))
-        self.status.set("Modelo analizado: revise «Ajustes» y pulse Calibrar.")
+        if not quiet:
+            self.status.set("Modelo analizado: revise «Ajustes» y pulse Calibrar.")
+
+    # ------------------------------------------------------------- asistente
+    def run_advisor(self):
+        inp = self.v_inp.get()
+        if not os.path.isfile(inp):
+            messagebox.showerror(APP, "Elija primero un fichero INP válido.")
+            return
+        if self.worker and self.worker.is_alive():
+            return
+        files = self.obs_files()
+        self.status.set("Asistente: analizando la red y la influencia de cada elemento en los sensores…")
+        self.analyze(quiet=True)
+
+        def work():
+            try:
+                from .advisor import advise
+                from . import engine as en
+                res = advise(inp, files, en._find_library(None, "2.2"),
+                             log=lambda m: self.q.put(("status", m)))
+                self.q.put(("advice", res))
+            except Exception as exc:
+                self.q.put(("error_adv", f"{exc}\n\n{traceback.format_exc()}"))
+        self.worker = threading.Thread(target=work, daemon=True)
+        self.worker.start()
+
+    def apply_advice(self, res):
+        self.advice = res
+        self.params = res["params"]
+        self.fill_params()
+        self.fill_diagnosis(res)
+        self.status.set("Asistente: propuesta lista. Revise el diagnóstico y los parámetros propuestos.")
+        self.show("diagnostico")
+
+    def _page_diagnosis(self):
+        p = self.pages["diagnostico"]
+        p.grid_columnconfigure(0, weight=3)
+        p.grid_columnconfigure(1, weight=2)
+        p.grid_rowconfigure(1, weight=1)
+        bar = ctk.CTkFrame(p, fg_color="transparent")
+        bar.grid(row=0, column=0, columnspan=2, sticky="we", pady=(0, 12))
+        primary(bar, "Ver parámetros propuestos  →", lambda: self.show("ajustes"), width=240).pack(side="left")
+        ctk.CTkLabel(bar, text="Pulse «✦ Asistente inteligente» en Datos para generar el diagnóstico.",
+                     font=(FONT, 12), text_color=THEME["muted"]).pack(side="left", padx=14)
+        fc = card(p, "Hallazgos", "Interpretación física de las diferencias entre el modelo y las medidas")
+        fc.grid(row=1, column=0, sticky="nsew", padx=(0, 7))
+        self.find_box = ctk.CTkScrollableFrame(fc, fg_color="transparent")
+        self.find_box.pack(fill="both", expand=True, padx=10, pady=10)
+        sc = card(p, "Sensores (modelo original)", "Sesgo y error medio cuadrático; amplitud = oscilación del modelo / medida")
+        sc.grid(row=1, column=1, sticky="nsew", padx=(7, 0))
+        self.tv_sens = ttk.Treeview(sc, show="headings", style="Epa.Treeview",
+                                    columns=("s", "t", "b", "e", "a", "r"))
+        for c, h, w in (("s", "Sensor", 110), ("t", "Tipo", 120), ("b", "Sesgo", 70),
+                        ("e", "RMSE", 70), ("a", "Amplitud", 80), ("r", "r", 60)):
+            self.tv_sens.heading(c, text=h)
+            self.tv_sens.column(c, width=w, anchor="w")
+        self.tv_sens.pack(fill="both", expand=True, padx=12, pady=10)
+
+    def fill_diagnosis(self, res):
+        for w in self.find_box.winfo_children():
+            w.destroy()
+        colors = {"error": THEME["accent"], "aviso": ("#B45309", "#F59E0B"),
+                  "info": ("#1D4ED8", "#60A5FA"), "ok": ("#047857", "#34D399")}
+        icons = {"error": "✖", "aviso": "▲", "info": "ℹ", "ok": "✔"}
+        for f in res["findings"]:
+            row = ctk.CTkFrame(self.find_box, fg_color=THEME["bg"], corner_radius=10)
+            row.pack(fill="x", pady=4)
+            ctk.CTkLabel(row, text=icons.get(f["nivel"], "•"), text_color=colors.get(f["nivel"], THEME["ink"]),
+                         font=(FONT, 16, "bold"), width=30).pack(side="left", padx=(10, 4), anchor="n", pady=8)
+            box = ctk.CTkFrame(row, fg_color="transparent")
+            box.pack(side="left", fill="x", expand=True, pady=6)
+            labs = [ctk.CTkLabel(box, text=f["titulo"], font=(FONT, 13, "bold"), text_color=THEME["ink"],
+                                 anchor="w", justify="left", wraplength=480),
+                    ctk.CTkLabel(box, text=f["texto"], font=(FONT, 11), text_color=THEME["muted"], anchor="w",
+                                 justify="left", wraplength=480)]
+            for lab in labs:
+                lab.pack(fill="x", padx=(0, 10))
+            box.bind("<Configure>", lambda e, ls=labs: [
+                lb._label.configure(wraplength=max(200, e.width - 16)) for lb in ls])
+        self.tv_sens.delete(*self.tv_sens.get_children())
+        for r in res.get("sensors", []):
+            self.tv_sens.insert("", "end", values=(
+                r["sensor"], TYPE_LABEL.get(r["tipo"], r["tipo"]), f"{r['sesgo']:+.2f}", f"{r['rmse']:.2f}",
+                f"×{r['amplitud']:.2f}" if np.isfinite(r["amplitud"]) else "—",
+                f"{r['r']:.2f}" if np.isfinite(r["r"]) else "—"))
 
     # ------------------------------------------------------------- 2. ajustes
     def _page_settings(self):
@@ -517,13 +605,18 @@ class App(ctk.CTk):
         f3 = ctk.CTkFrame(c3, fg_color="transparent")
         f3.pack(fill="both", expand=True, padx=18, pady=14)
         self.tv_par = EditableTree(
-            f3, ("use", "name", "type", "mode", "n", "lo", "hi", "log"),
-            ("", "Familia / elemento", "Tipo", "Modo", "Elementos", "Mínimo", "Máximo", "Escala"),
-            (40, 250, 180, 110, 105, 100, 100, 80),
+            f3, ("use", "name", "type", "mode", "n", "lo", "hi", "log", "why"),
+            ("", "Familia / elemento", "Tipo", "Modo", "Elementos", "Mínimo", "Máximo", "Escala", "Motivo"),
+            (36, 210, 150, 95, 85, 80, 80, 60, 560),
             choices={"type": [PARAM_LABEL[t] for t in PARAM_TYPES],
                      "mode": ["absolute", "multiplier", "offset"], "log": ["log", "lineal"]},
-            checks=("use",), readonly=("n",), height=8)
+            checks=("use",), readonly=("n", "why"), height=10)
+        sxp = ttk.Scrollbar(f3, orient="horizontal", command=self.tv_par.xview)
+        self.tv_par.configure(xscrollcommand=sxp.set)
         self.tv_par.pack(fill="both", expand=True)
+        sxp.pack(fill="x")
+        for c in ("use", "name", "type", "mode", "n", "lo", "hi", "log", "why"):
+            self.tv_par.column(c, stretch=False)
 
         c4 = card(p, "Reglas de aceptación",
                   "Umbral en cada paso de tiempo · % de pasos y % de sensores que deben cumplir")
@@ -626,7 +719,8 @@ class App(ctk.CTk):
         for i, p in enumerate(self.params):
             self.tv_par.insert("", "end", iid=str(i), values=(
                 "●" if p["use"] else "○", p["name"], PARAM_LABEL.get(p["type"], p["type"]),
-                p["mode"], p["n"], p["bounds"][0], p["bounds"][1], "log" if p["log"] else "lineal"))
+                p["mode"], p["n"], p["bounds"][0], p["bounds"][1], "log" if p["log"] else "lineal",
+                p.get("reason", "")))
 
     def read_params(self) -> List[dict]:
         inv = {v: k for k, v in PARAM_LABEL.items()}
@@ -825,6 +919,15 @@ class App(ctk.CTk):
                     self.txt_log.insert("end", payload + "\n")
                     self.txt_log.see("end")
                     self._progress(payload)
+                    continue
+                if kind == "status":
+                    self.status.set(payload)
+                    continue
+                if kind == "advice":
+                    self.apply_advice(payload)
+                    continue
+                if kind == "error_adv":
+                    messagebox.showerror(APP, "El asistente falló:\n" + payload.split("\n\n")[0])
                     continue
                 self.b_run.configure(state="normal")
                 self.b_cancel.configure(state="disabled")

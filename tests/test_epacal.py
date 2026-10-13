@@ -159,3 +159,19 @@ def test_tank_level_calibration(tmp_path):
     assert abs(x["TANQUE:tank_level"] - 3.0) < 0.2
     i = h.objectives.index("LEVEL")
     assert h.obj_final[i] < 0.1 < h.obj_initial[i]
+
+
+def test_advisor_selects_tank_parameters(tmp_path):
+    """Asistente: propone material, TCV de llenado y tanque; fija el embalse confundido."""
+    from examples.generar_caso_tanque import main as gen_tanque
+    from epacal.advisor import advise
+    gen_tanque(str(tmp_path))
+    obs = [(os.path.join(tmp_path, f), k) for f, k in (
+        ("calibr_presion.dat", "PRESSURE"), ("calibr_caudal.dat", "FLOW"), ("calibr_nivel.dat", "LEVEL"))]
+    res = advise(os.path.join(tmp_path, "modelo_inicial.inp"), obs, log=lambda m: None, workers=2)
+    on = {p["name"] for p in res["params"] if p.get("use", True)}
+    off = {p["name"] for p in res["params"] if not p.get("use", True)}
+    assert {"VALV_TCV_LL", "NIVEL_INI_T1", "DIAM_T1"} <= on
+    assert any(n.startswith("METAL") for n in on)
+    assert "NIVEL_R1" in off
+    assert res["findings"]

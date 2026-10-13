@@ -128,7 +128,10 @@ def propose_parameters(info: dict) -> List[dict]:
                     "bounds": [round(lo, 3), round(hi, 3)], "log": False})
         out.append({"use": True, "name": f"DIAM_{t['id']}", "type": "tank_diameter",
                     "mode": "multiplier", "select": {"ids": [t["id"]]}, "n": 1,
-                    "bounds": [0.7, 1.3], "log": False})
+                    "bounds": [0.5, 2.0], "log": False})
+    for p in out:
+        p.setdefault("reason", "propuesta rápida (por catálogo/tipo); use el asistente para "
+                               "comprobar su influencia real")
     return out
 
 
