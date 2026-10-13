@@ -2,7 +2,11 @@ ZP-05 Vista del Mar · datos para la calibración (ventana 12/09 00:00 – 15/09
 
 datos_depurados_12-15.xlsx
   Resumen   sensores, elemento del INP, offset, uso recomendado y leyenda de marcas.
-  Gráficos  dato inicial (gris) y dato depurado (rojo) de todos los sensores.
+  Gráficos suavizado  dato corregido con offset (azul) frente a dato depurado (rojo):
+            sólo se ve lo que cambia el suavizado, la interpolación o el reemplazo.
+  Gráficos offset     dato inicial del equipo (gris) frente a corregido (azul): sólo el
+            desplazamiento constante del cero (lectura al aire antes de instalar).
+            P9, P10 y P11 llevan ≈ +1,3 a +1,6 m; el resto ≈ ±0,3 m.
   P1 … N_Durazno  una hoja por sensor: dato inicial, marca, reemplazo, corregido y
             dato depurado con fórmula. Las filas en gris fuera de la ventana sólo
             sirven para que la media móvil del borde sea completa.

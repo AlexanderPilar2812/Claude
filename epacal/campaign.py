@@ -1047,7 +1047,8 @@ def write_simple_excel(sensors, window, title, out_path, span=None, charts=False
                        exclude=()) -> None:
     """Excel sencillo con formato corporativo: por sensor, dato inicial, marca, valor de
     reemplazo y dato depurado calculado con fórmula. ``span`` limita las filas a una
-    ventana (inicio, fin); ``charts`` añade una hoja «Gráficos» con todos los sensores."""
+    ventana (inicio, fin); ``charts`` añade dos hojas de gráficos: «Gráficos suavizado»
+    (corregido frente a depurado) y «Gráficos offset» (dato inicial frente a corregido)."""
     import openpyxl
     from openpyxl.formatting.rule import FormulaRule
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -1202,39 +1203,65 @@ def write_simple_excel(sensors, window, title, out_path, span=None, charts=False
                            first + int(ii[-1]) if len(ii) else last))
     if charts and chart_refs:
         from openpyxl.chart import ScatterChart, Reference, Series
-        gs = wb.create_sheet("Gráficos", 1)
-        gs.sheet_view.showGridLines = False
-        gs["A1"] = "Dato inicial y dato depurado por sensor"
-        gs["A1"].font = Font(name=F, bold=True, size=16, color=RED)
-        gs["A2"] = (f"Ventana {fmt(span[0])} – {fmt(span[1])}" if span else "Toda la campaña") + \
-            " · gris: dato inicial · rojo: dato depurado"
-        gs["A2"].font = Font(name=F, size=10, color="595959")
-        for j, (s, nm, first, last) in enumerate(chart_refs):
-            ch = ScatterChart()
-            ch.title = f"{s.name} · {KIND_TXT[s.kind]} ({UNIT[s.kind]})"
-            ch.style = 13
-            ch.height, ch.width = 7.0, 16.5
-            ch.y_axis.title = UNIT[s.kind]
-            ch.x_axis.number_format = "dd/mm"
-            ch.x_axis.majorUnit = 1
-            ch.legend.position = "b"
-            ws_ = wb[nm]
-            xs = Reference(ws_, min_col=1, min_row=first, max_row=last)
-            for col, color, w, lab in ((2, "A6A6A6", 9000, "Dato inicial"), (6, RED, 15000, "Dato depurado")):
-                sr = Series(Reference(ws_, min_col=col, min_row=first, max_row=last), xs, title=lab)
-                sr.marker.symbol = "none"
-                sr.graphicalProperties.line.solidFill = color
-                sr.graphicalProperties.line.width = w
-                sr.smooth = False
-                ch.series.append(sr)
-            vals = pd.concat([g_ for g_ in (s.grid[span[0]:span[1]] if span else s.grid,
-                                              s.clean[span[0]:span[1]] if span else s.clean)]).dropna()
-            if len(vals):
+        win_txt = f"Ventana {fmt(span[0])} – {fmt(span[1])}" if span else "Toda la campaña"
+        # dos comparaciones separadas: el offset desplaza la curva entera; el suavizado sólo
+        # cambia los tramos marcados, y se ve sobre el dato ya corregido
+        specs = (("Gráficos suavizado", "Suavizado y reemplazos: dato corregido (con offset) frente a dato depurado",
+                  " · azul: corregido (dato inicial − offset) · rojo: depurado. Las diferencias entre las dos "
+                  "curvas son sólo las del suavizado, interpolación o reemplazo.",
+                  ((5, "5B9BD5", 9000, "Corregido (con offset)"), (6, RED, 15000, "Dato depurado"))),
+                 ("Gráficos offset", "Offset de cero: dato inicial frente a dato corregido",
+                  " · gris: dato inicial del equipo · azul: corregido (dato inicial − offset). Desplazamiento "
+                  "constante igual al offset de la hoja del sensor (lectura al aire antes de instalar).",
+                  ((2, "A6A6A6", 9000, "Dato inicial"), (5, "5B9BD5", 15000, "Corregido (con offset)"))))
+        for pos, (sheet, head_txt, sub, series) in enumerate(specs, 1):
+            gs = wb.create_sheet(sheet, pos)
+            gs.sheet_view.showGridLines = False
+            gs["A1"] = head_txt
+            gs["A1"].font = Font(name=F, bold=True, size=16, color=RED)
+            gs["A2"] = win_txt + sub
+            gs["A2"].font = Font(name=F, size=10, color="595959")
+            for j, (s, nm, first, last) in enumerate(chart_refs):
+                if sheet == "Gráficos offset" and s.kind != "PRESSURE":
+                    continue
+                ch = ScatterChart()
+                off = s.offset if s.kind == "PRESSURE" else 0.0
+                extra = f" · corrección de cero {-off:+.2f} m" if s.kind == "PRESSURE" else ""
+                ch.title = f"{s.name} · {KIND_TXT[s.kind]} ({UNIT[s.kind]}){extra}"
+                ch.style = 13
+                ch.height, ch.width = 7.0, 16.5
+                ch.y_axis.title = UNIT[s.kind]
+                ch.x_axis.number_format = "dd/mm"
+                ch.x_axis.majorUnit = 1
+                ch.legend.position = "b"
+                ws_ = wb[nm]
+                xs = Reference(ws_, min_col=1, min_row=first, max_row=last)
+                for col, color, w, lab in series:
+                    sr = Series(Reference(ws_, min_col=col, min_row=first, max_row=last), xs, title=lab)
+                    sr.marker.symbol = "none"
+                    sr.graphicalProperties.line.solidFill = color
+                    sr.graphicalProperties.line.width = w
+                    sr.smooth = False
+                    ch.series.append(sr)
                 ch.x_axis.scaling.min = float((span[0] if span else s.grid.index[0]).to_julian_date() - 2415018.5)
                 ch.x_axis.scaling.max = float((span[1] if span else s.grid.index[-1]).to_julian_date() - 2415018.5)
-            ch.x_axis.delete = False
-            ch.y_axis.delete = False
-            gs.add_chart(ch, f"{'A' if j % 2 == 0 else 'K'}{4 + (j // 2) * 15}")
+                # eje Y ajustado a los datos para que se vea el desplazamiento del offset
+                g_ = s.grid[span[0]:span[1]] if span else s.grid
+                c_ = s.clean[span[0]:span[1]] if span else s.clean
+                v_ = pd.concat([g_, g_ - off, c_]).replace([np.inf, -np.inf], np.nan).dropna()
+                if len(v_):
+                    lo, hi = float(v_.min()), float(v_.max())
+                    pad = max(0.05 * (hi - lo), 0.1)
+                    raw = (hi - lo + 2 * pad) / 6
+                    e10 = 10 ** np.floor(np.log10(raw))
+                    step = next(m * e10 for m in (1, 2, 5, 10) if m * e10 >= raw)
+                    ch.y_axis.scaling.min = float(np.floor((lo - pad) / step) * step)
+                    ch.y_axis.scaling.max = float(np.ceil((hi + pad) / step) * step)
+                    ch.y_axis.majorUnit = float(step)
+                ch.x_axis.delete = False
+                ch.y_axis.delete = False
+                k = len(gs._charts)
+                gs.add_chart(ch, f"{'A' if k % 2 == 0 else 'K'}{4 + (k // 2) * 15}")
     wb.save(out_path)
 
 
