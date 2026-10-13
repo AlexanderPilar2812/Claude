@@ -60,6 +60,7 @@ class Sensor:
     xy: Optional[Tuple[float, float]] = None
     element: Optional[str] = None   # nudo / línea / tanque del INP
     elev: float = float("nan")
+    elev_meas: float = float("nan")      # cota del sensor medida (GNSS) si viene en el GPKG
     zone: Optional[int] = None
     prv: Optional[str] = None       # VRP que alimenta su zona
     notes: List[Tuple[str, str]] = field(default_factory=list)   # (nivel, texto)
@@ -228,6 +229,12 @@ class Net:
             self.zone_prv.setdefault(zone[b], []).append(
                 {"id": k, "up_zone": zone[a], "setting": s, "target": self.elev[b] + s, "up": a, "down": b})
 
+    def mean_head(self, nodes) -> np.ndarray:
+        """Carga media en el modelo (simulación completa, guardada en caché)."""
+        if getattr(self, "_mean_head", None) is None:
+            self._mean_head = self.simulate(list(range(self.n)), [])["H"].mean(0)
+        return self._mean_head[np.asarray(nodes)]
+
     def nearest_node(self, x, y, types=None) -> Tuple[int, float]:
         d = np.hypot(self.xy[:, 0] - x, self.xy[:, 1] - y)
         if types is not None:
@@ -315,6 +322,11 @@ def locate(sensors: List[Sensor], points: Dict[str, dict], net: Net, log=print) 
             continue
         x, y = points[pt]["x"], points[pt]["y"]
         s.xy = (x, y)
+        at = points[pt].get("attrs", {})
+        for k in ("Elevacion_Medida", "elev_gnss", "Elevacion_msnm"):
+            if isinstance(at.get(k), (int, float)):
+                s.elev_meas = float(at[k])
+                break
         if s.kind == "FLOW":
             l, d = net.nearest_link(x, y)
             s.element = net.lid[l]
@@ -330,9 +342,39 @@ def locate(sensors: List[Sensor], points: Dict[str, dict], net: Net, log=print) 
                                f"(cota de fondo + nivel) o conviértalo en tanque.")
         else:
             i, d = net.nearest_node(x, y, [en.EN_JUNCTION])
+            dd = np.hypot(net.xy[:, 0] - x, net.xy[:, 1] - y)
+            junc = net.ntype == en.EN_JUNCTION
+            station = np.where(junc & (dd <= d + 3.0))[0]
+            zs = {int(net.zone[k]) for k in station}
+            p_meas = _pressure_level(s)
+            if len(zs) > 1 and p_meas is not None:
+                # estación de válvulas (varios nudos en el mismo sitio, en zonas distintas):
+                # el nudo cuya carga en el modelo se parece más a la medida
+                h = net.mean_head(station)
+                i = int(station[np.argmin(np.abs(p_meas + net.elev[station] - h))])
+                s.note("info", f"El punto está en una estación de válvulas ({len(station)} nudos en el mismo "
+                               f"sitio): se asigna al nudo {net.nid[i]}, cuya carga en el modelo coincide con "
+                               f"la medida.")
+            elif np.isfinite(s.elev_meas):
+                # con cota GNSS: entre los nudos cercanos, el de cota más parecida
+                near = np.where((dd < max(30.0, 1.5 * d)) & junc)[0]
+                ok = near[np.abs(net.elev[near] - s.elev_meas) < 10]
+                if len(ok):
+                    i = int(ok[np.argmin(dd[ok] + 3.0 * np.abs(net.elev[ok] - s.elev_meas))])
+            d = float(dd[i])
             s.element, s._node = net.nid[i], i
             s.elev = net.elev[i]
             s.zone = int(net.zone[i])
+            if np.isfinite(s.elev_meas) and abs(s.elev_meas - s.elev) > 10:
+                s.note("aviso", f"La cota GNSS del sensor ({s.elev_meas:.2f} m) no es compatible con el sitio: "
+                                f"el nudo {s.element} está a {s.elev:.2f} m y ningún nudo cercano tiene esa cota. "
+                                f"Con la cota del nudo la carga medida es {(_pressure_level(s) or 0) + s.elev:.1f} m. "
+                                f"Revise la cota GNSS (¿es la de otro punto?); no se usa para corregir la presión.")
+                s.elev_meas = float("nan")
+            elif np.isfinite(s.elev_meas) and abs(s.elev_meas - s.elev) > 2:
+                s.note("aviso", f"Cota GNSS del sensor {s.elev_meas:.2f} m y cota del nudo {s.element} en el INP "
+                                f"{s.elev:.2f} m (Δ {s.elev_meas - s.elev:+.2f} m). La presión del modelo se compara "
+                                f"pasando la medida a la cota del nudo; revise la cota del nudo.")
             fe = net.zone_prv.get(s.zone, [])
             s.prv = fe[0]["id"] if fe else None
         if d > 25:
@@ -342,6 +384,14 @@ def locate(sensors: List[Sensor], points: Dict[str, dict], net: Net, log=print) 
 
 
 # --------------------------------------------------------------------------- utilidades
+def _pressure_level(s: "Sensor") -> Optional[float]:
+    """Presión típica medida (sin offset, con el equipo instalado) para ubicar el sensor."""
+    if s.clean is None:
+        return None
+    x = s.clean.where(s.flag.isin([0, 1, 2, 3])).dropna()
+    return float(x.median()) if len(x) > 20 else None
+
+
 def to_grid(s: pd.Series, step: str = STEP, max_gap: str = "40min") -> pd.Series:
     """Remuestrea a una malla regular interpolando en el tiempo real de cada lectura
     (los equipos no registran a la misma hora en punto)."""
@@ -710,6 +760,8 @@ def model_checks(sensors: List[Sensor], net: Net, window: Tuple[pd.Timestamp, pd
         if s.model_day is None or s.clean is None:
             continue
         x = s.clean[a:b].where(s.flag[a:b].isin([0, 1, 2, 3]))
+        if s.kind == "PRESSURE" and np.isfinite(s.elev_meas):
+            x = x + (s.elev_meas - s.elev)          # presión equivalente en la cota del nudo
         if x.notna().sum() < 48:
             continue
         meas_day = _typical_profile(x, getattr(s, 'onoff', False))
@@ -746,6 +798,10 @@ def model_checks(sensors: List[Sensor], net: Net, window: Tuple[pd.Timestamp, pd
                                     f"{v['id']} ({v['target']:.1f} m) y oscilando {amp_m:.0f} m al día "
                                     f"(el modelo {amp_s:.0f} m): la VRP no regulaba (abierta, by-pass o averiada) "
                                     f"y pasaba la presión de aguas arriba ({uph:.0f} m).")
+                elif abs(hgl - uph) <= 3 and hgl > v["target"] + 5:
+                    s.note("error", f"Carga medida {hgl:.1f} m igual a la de aguas arriba de la VRP {v['id']} "
+                                    f"({uph:.1f} m) y {hgl - v['target']:.0f} m por encima de su consigna "
+                                    f"({v['target']:.1f} m): la VRP no reduce (abierta, by-pass o fuera de servicio).")
                 elif hgl > uph + 3:
                     s.note("error", f"Carga medida {hgl:.1f} m mayor que la de aguas arriba de su VRP "
                                     f"({uph:.1f} m): el sensor no está en la zona que dice el modelo "
@@ -934,6 +990,8 @@ def write_dat(sensors: List[Sensor], window, out_dir: str, net: Net) -> Dict[str
                              f"{', embalse: su nivel va al patrón de carga' if getattr(s, 'reservoir', False) else ''})")
                 continue
             x = s.clean[a:b].where(s.flag[a:b].isin([0, 1, 2, 3]))
+            if kind == "PRESSURE" and np.isfinite(s.elev_meas):
+                x = x + (s.elev_meas - s.elev)      # a la cota del nudo del INP
             prof = _typical_profile(x, getattr(s, 'onoff', False))
             if prof is None:
                 continue
@@ -949,7 +1007,8 @@ def write_dat(sensors: List[Sensor], window, out_dir: str, net: Net) -> Dict[str
             continue
         if lines:
             with open(p, "w", encoding="utf-8") as fh:
-                fh.write(f";Día tipo {fmt(a)} – {fmt(b)} (mediana por cuarto de hora), datos depurados\n")
+                fh.write(f";Día tipo {fmt(a)} – {fmt(b)} (mediana por cuarto de hora), datos depurados"
+                         f"{'; presiones pasadas a la cota del nudo con la cota GNSS' if kind == 'PRESSURE' else ''}\n")
                 fh.write("\n".join(lines) + "\n")
             files[kind] = p
     return files
@@ -982,6 +1041,144 @@ def write_excel(sensors, events, regimes, window, summary_rows, out_path) -> Non
             d.insert(0, "hora", [f"{k // 4:02d}:{(k % 4) * 15:02d}" for k in range(96)])
             d.to_excel(xw, sheet_name="Dia_tipo", index=False)
     _color_excel(out_path, [s.name[:31] for s in sensors if s.clean is not None])
+
+
+def write_simple_excel(sensors, window, title, out_path) -> None:
+    """Excel sencillo con formato corporativo: por sensor, dato inicial, marca, valor de
+    reemplazo y dato depurado calculado con fórmula."""
+    import openpyxl
+    from openpyxl.formatting.rule import FormulaRule
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    RED, GREY, INK = "E30613", "F2F2F2", "1F1F1F"
+    F = "Arial"
+    head = Font(name=F, bold=True, color="FFFFFF", size=10)
+    fill_head = PatternFill("solid", fgColor=RED)
+    thin = Side(style="thin", color="D9D9D9")
+    box = Border(bottom=thin)
+    blue = Font(name=F, color="0000FF", size=10)
+    normal = Font(name=F, color=INK, size=10)
+    mark_fill = {1: "FFF2CC", 2: "DDEBF7", 3: "E2EFDA", 4: "EADCF8", 9: "F8CBAD"}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Resumen"
+    ws.sheet_view.showGridLines = False
+    ws["A1"] = title
+    ws["A1"].font = Font(name=F, bold=True, size=16, color=RED)
+    ws["A2"] = (f"Periodo de calibración propuesto: {fmt(window[0])} – {fmt(window[1])}. "
+                f"Dato depurado = fórmula sobre el dato inicial (ver leyenda).")
+    ws["A2"].font = Font(name=F, size=10, color="595959")
+    ws.row_dimensions[1].height = 26
+    cols = ["Sensor", "Tipo", "Unidad", "Elemento INP", "Offset", "Uso recomendado", "Hoja"]
+    for j, h in enumerate(cols, 1):
+        c = ws.cell(4, j, h)
+        c.font, c.fill = head, fill_head
+        c.alignment = Alignment(vertical="center")
+    ws.row_dimensions[4].height = 22
+    usable = [s for s in sensors if s.clean is not None]
+    names = {}
+    for s in usable:
+        nm = re.sub(r"[\[\]\*\?/\\:]", "_", s.name)[:31]
+        names[s.name] = nm
+    for i, s in enumerate(usable, 5):
+        vals = [s.name, KIND_TXT[s.kind], UNIT[s.kind], s.element or "—", None, s.verdict, names[s.name]]
+        for j, v in enumerate(vals, 1):
+            c = ws.cell(i, j, v)
+            c.font, c.border = normal, box
+            if i % 2 == 0:
+                c.fill = PatternFill("solid", fgColor=GREY)
+        ws.cell(i, 5).value = f"='{names[s.name]}'!$C$3"
+        ws.cell(i, 5).number_format = "0.000"
+        ws.cell(i, 7).hyperlink = f"#'{names[s.name]}'!A1"
+        ws.cell(i, 7).font = Font(name=F, size=10, color=RED, underline="single")
+    r = 6 + len(usable)
+    ws.cell(r, 1, "Leyenda de la columna «Marca»").font = Font(name=F, bold=True, size=11, color=RED)
+    legend = [(0, "válido", "Dato depurado = corregido = dato inicial − offset"),
+              (1, "envolvente", "Oscilación más rápida que el registro: MEDIA.ACOTADA (TRIMMEAN, 50 %) del dato "
+                                "corregido en la ventana de la hoja (±4 lecturas = 2 h, o ±8 = 4 h)"),
+              (2, "interpolado", "Pico aislado o hueco ≤ 1 h: interpolación lineal (valor en «Reemplazo»)"),
+              (3, "perfil típico", "Hueco de 1 a 6 h: perfil diario del propio sensor ajustado a los extremos "
+                                   "(valor en «Reemplazo»)"),
+              (4, "balance de masa", "Nivel de tanque reconstruido con los caudales de entrada y salida "
+                                     "(valor en «Reemplazo»)"),
+              (9, "excluido", "Sin instalar, corte de suministro, sensor fuera del agua: queda vacío")]
+    for k, (m, n, t) in enumerate(legend, r + 1):
+        c = ws.cell(k, 1, m)
+        c.font = Font(name=F, bold=True, size=10)
+        if m in mark_fill:
+            c.fill = PatternFill("solid", fgColor=mark_fill[m])
+        ws.cell(k, 2, n).font = Font(name=F, bold=True, size=10)
+        ws.cell(k, 3, t).font = normal
+    k = r + len(legend) + 2
+    for t in ("En azul: valores editables (offset, marca y reemplazo). Si cambia una marca o el offset, "
+              "el dato depurado se recalcula.",
+              "Dato inicial: lectura del equipo llevada a la malla común de 15 min (interpolada en la hora real de "
+              "cada lectura). Presión en m c.a., caudal en L/s, nivel en m."):
+        ws.cell(k, 1, t).font = Font(name=F, size=9, italic=True, color="595959")
+        k += 1
+    for j, w in enumerate((14, 10, 8, 16, 10, 46, 14), 1):
+        ws.column_dimensions[get_column_letter(j)].width = w
+    ws.freeze_panes = "A5"
+
+    for s in usable:
+        sh = wb.create_sheet(names[s.name])
+        sh.sheet_view.showGridLines = False
+        sh["A1"] = f"{s.name} · {KIND_TXT[s.kind]} ({UNIT[s.kind]}) · {s.element or 'sin ubicación'}"
+        sh["A1"].font = Font(name=F, bold=True, size=14, color=RED)
+        sh["A2"] = s.verdict
+        sh["A2"].font = Font(name=F, size=10, color="595959")
+        off = s.offset if s.kind == "PRESSURE" else 0.0
+        win = 8 if any("4 h" in str(x) for x in s.reason.unique()) else 4
+        for cell, lab, val in (("B3", "Offset", off), ("B4", "Ventana (lecturas a cada lado)", win)):
+            sh[cell.replace("B", "A")] = lab
+            sh[cell.replace("B", "A")].font = Font(name=F, bold=True, size=10)
+        sh["C3"], sh["C4"] = round(off, 4), win
+        sh["C3"].font, sh["C4"].font = blue, normal
+        sh["C3"].number_format = "0.000"
+        hdr = ["Fecha y hora", f"Dato inicial ({UNIT[s.kind]})", "Marca", "Reemplazo",
+               f"Corregido ({UNIT[s.kind]})", f"Dato depurado ({UNIT[s.kind]})", "Motivo"]
+        R0 = 6
+        for j, h in enumerate(hdr, 1):
+            c = sh.cell(R0, j, h)
+            c.font, c.fill = head, fill_head
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        sh.row_dimensions[R0].height = 30
+        g = s.grid
+        n = len(g)
+        first, last = R0 + 1, R0 + n
+        for k in range(n):
+            row = first + k
+            fl = int(s.flag.iloc[k])
+            v = g.iloc[k]
+            sh.cell(row, 1, g.index[k].to_pydatetime()).number_format = "dd/mm/yyyy hh:mm"
+            c = sh.cell(row, 2, None if pd.isna(v) else round(float(v), 4))
+            c.number_format = "0.00"
+            sh.cell(row, 3, fl).font = blue
+            if fl in (2, 3, 4) and pd.notna(s.clean.iloc[k]):
+                c = sh.cell(row, 4, round(float(s.clean.iloc[k]), 4))
+                c.number_format, c.font = "0.00", blue
+            a0, a1 = max(first, row - win), min(last, row + win)
+            sh.cell(row, 5, f'=IF(OR(C{row}=9,B{row}=""),"",B{row}-$C$3)').number_format = "0.00"
+            sh.cell(row, 6, f'=IF(C{row}=9,"",IF(C{row}=0,E{row},IF(C{row}=1,'
+                            f'IF(COUNT(E{a0}:E{a1})=0,"",TRIMMEAN(E{a0}:E{a1},0.5)),IF(D{row}="","",D{row}))))')
+            sh.cell(row, 6).number_format = "0.00"
+            sh.cell(row, 6).font = Font(name=F, size=10, bold=True)
+            if s.reason.iloc[k]:
+                sh.cell(row, 7, s.reason.iloc[k])
+        for row in sh.iter_rows(min_row=first, max_row=last, max_col=5):
+            for c in row:
+                if c.column in (1, 2, 5):
+                    c.font = normal
+        for m, colr in mark_fill.items():
+            sh.conditional_formatting.add(f"C{first}:C{last}", FormulaRule(
+                formula=[f"$C{first}={m}"], fill=PatternFill("solid", fgColor=colr)))
+        for j, w in enumerate((18, 13, 8, 12, 13, 16, 58), 1):
+            sh.column_dimensions[get_column_letter(j)].width = w
+        sh.freeze_panes = sh.cell(first, 1)
+        sh.auto_filter.ref = f"A{R0}:G{last}"
+    wb.save(out_path)
 
 
 def _color_excel(path, sheets):
@@ -1249,13 +1446,12 @@ def run(inp: str, excel: str, gpkgs: Sequence[str], out_dir: str, cfg: Optional[
         points.update(read_gpkg_points(g))
     log(f"Puntos en GeoPackage: {', '.join(points)}")
     net = Net(inp, lib)
-    log("Ubicando los sensores en el modelo…")
-    locate(sensors, points, net, log)
-
     for s in sensors:
         s.grid = to_grid(s.raw)
         detect_service(s)
         analyse_sensor(s, CTX)
+    log("Ubicando los sensores en el modelo…")
+    locate(sensors, points, net, log)
     events = find_events(sensors)
     on = pd.Series([s.t_on for s in sensors if s.kind == "PRESSURE" and s.t_on is not None])
     if len(on):
@@ -1307,6 +1503,9 @@ def run(inp: str, excel: str, gpkgs: Sequence[str], out_dir: str, cfg: Optional[
     xl = os.path.join(out_dir, "campaña_depurada.xlsx")
     write_excel(sensors, events, regimes, window, summary, xl)
     files.append(xl)
+    simple = os.path.join(out_dir, "datos_depurados.xlsx")
+    write_simple_excel(sensors, window, f"Datos depurados · {os.path.splitext(os.path.basename(excel))[0]}", simple)
+    files.append(simple)
     dats = write_dat(sensors, window, out_dir, net)
     files += list(dats.values())
     rep = os.path.join(out_dir, "informe_campaña.html")

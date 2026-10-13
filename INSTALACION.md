@@ -70,6 +70,14 @@ Resultados en la carpeta `campaña_<excel>`:
 
 - `informe_campaña.html`: el relato, los eventos y una gráfica por sensor (medido,
   depurado, modelo y día tipo).
+- `datos_depurados.xlsx`: un Excel sencillo con formato corporativo. Tiene una hoja por sensor con
+  estas columnas:
+  - el dato inicial y la marca;
+  - el reemplazo (cuando lo hay) y el dato corregido;
+  - el **dato depurado, calculado con fórmula**: vacío si se excluye, el corregido si es
+    válido, MEDIA.ACOTADA en la ventana si es envolvente, o el reemplazo en los demás casos.
+
+  Si cambia una marca o el offset, el depurado se recalcula.
 - `campaña_depurada.xlsx`: el resumen, los eventos, una hoja por sensor con la marca y el
   motivo de cada dato, y el día tipo.
 - `calibr_presion.dat` / `calibr_caudal.dat`: el día tipo del periodo de calibración. Los
