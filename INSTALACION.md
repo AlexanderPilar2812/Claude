@@ -60,7 +60,7 @@ puntos de medición (presión, caudalímetros y niveles). Al pulsar **✦ Analiz
 | marca | método | cuándo |
 |---|---|---|
 | 0 | válido | dato medido, sin tocar |
-| 1 | envolvente (media recortada de 2 h, o 4 h si la oscilación es fuerte) | días con un salto mediano entre lecturas de más de 3 m: esa oscilación no la reproduce un modelo |
+| 1 | envolvente (media recortada de 2 h; 3 h si el salto supera 3 m y 4 h si supera 6 m) | días con un salto mediano entre lecturas de más de 1 m (un sensor estable salta 0,2–0,4 m): aire o VRP inestable, que un modelo no reproduce |
 | 2 | interpolado | pico aislado o hueco ≤ 1 h |
 | 3 | perfil típico del propio sensor, ajustado a los extremos | hueco de 1 a 6 h |
 | 4 | balance de masa | nivel de tanque sin dato, reconstruido con los caudales de entrada y salida (solo forma) |

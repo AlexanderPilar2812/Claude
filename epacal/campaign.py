@@ -12,7 +12,7 @@ de medición en GeoPackage. Salidas:
 Métodos de reemplazo (columna ``marca``):
 
     0  válido                    dato medido, sin tocar
-    1  envolvente                oscilación más rápida que el registro: media recortada 2 h
+    1  envolvente                oscilación más rápida que el registro: media recortada 2–4 h
     2  interpolado               pico aislado o hueco corto (≤ 1 h)
     3  perfil típico             hueco medio (≤ 6 h): perfil diario del propio sensor,
                                  ajustado a los extremos del hueco
@@ -513,12 +513,14 @@ def analyse_sensor(s: Sensor, ctx: dict) -> None:
     s._fast_days = fast_days
     s._noise = nd
     if fast_days:
-        strong = float(nd[nd.index.isin(fast_days)].median()) > 2 * ctx["noise_abs"][s.kind]
-        env = trimmed_roll(g.where(valid), 17 if strong else 9)
+        # ventana según la fuerza de la oscilación: 2 h, 3 h (≥ noise_mid) o 4 h (≥ noise_strong)
+        med = float(nd[nd.index.isin(fast_days)].median())
+        hours = 4 if med > ctx["noise_strong"][s.kind] else 3 if med > ctx["noise_mid"][s.kind] else 2
+        env = trimmed_roll(g.where(valid), 4 * hours + 1)
         m = valid & g.index.normalize().isin(fast_days)
         clean[m] = env[m]
         flag[m] = 1
-        reason[m] = f"oscilación más rápida que el registro → media recortada de {4 if strong else 2} h"
+        reason[m] = f"oscilación más rápida que el registro → media recortada de {hours} h"
 
     # ---- picos aislados (Hampel) en el resto
     q = valid & (flag == 0)
@@ -965,7 +967,7 @@ def verdicts(sensors: List[Sensor], window) -> None:
         elif errors:
             s.verdict, s.weight = "Revisar antes de usar", 0.3
         elif pct[1] > 20 and float(s._noise[(s._noise.index >= a.normalize()) & (s._noise.index < b)].median()) \
-                > 2 * CTX["noise_abs"][s.kind]:
+                > CTX["noise_strong"][s.kind]:
             s.verdict, s.weight = "Usar solo la media horaria (tolerancia mayor)", 0.5
         elif pct[1] > 20:
             s.verdict, s.weight = "Válido (suavizado)", 0.9
@@ -1101,7 +1103,7 @@ def write_simple_excel(sensors, window, title, out_path, span=None, charts=False
     ws.cell(r, 1, "Leyenda de la columna «Marca»").font = Font(name=F, bold=True, size=11, color=RED)
     legend = [(0, "válido", "Dato depurado = corregido = dato inicial − offset"),
               (1, "envolvente", "Oscilación más rápida que el registro: MEDIA.ACOTADA (TRIMMEAN, 50 %) del dato "
-                                "corregido en la ventana de la hoja (±4 lecturas = 2 h, o ±8 = 4 h)"),
+                                "corregido en la ventana de la hoja (±4 lecturas = 2 h, ±6 = 3 h u ±8 = 4 h)"),
               (2, "interpolado", "Pico aislado o hueco ≤ 1 h: interpolación lineal (valor en «Reemplazo»)"),
               (3, "perfil típico", "Hueco de 1 a 6 h: perfil diario del propio sensor ajustado a los extremos "
                                    "(valor en «Reemplazo»)"),
@@ -1134,7 +1136,8 @@ def write_simple_excel(sensors, window, title, out_path, span=None, charts=False
         sh["A2"] = s.verdict
         sh["A2"].font = Font(name=F, size=10, color="595959")
         off = s.offset if s.kind == "PRESSURE" else 0.0
-        win = 8 if any("4 h" in str(x) for x in s.reason.unique()) else 4
+        hrs = [int(h) for x in s.reason.unique() for h in re.findall(r"media recortada de (\d+) h", str(x))]
+        win = 2 * max(hrs) if hrs else 4
         for cell, lab, val in (("B3", "Offset", off), ("B4", "Ventana (lecturas a cada lado)", win)):
             sh[cell.replace("B", "A")] = lab
             sh[cell.replace("B", "A")].font = Font(name=F, bold=True, size=10)
@@ -1403,7 +1406,7 @@ li{{margin:3px 0}}
 <h2>Qué datos tomar y cuáles reemplazar (periodo de calibración, % de los datos)</h2>
 <table><tr><th>sensor</th><th>tipo</th><th>elemento INP</th><th>VRP de su zona</th><th>válido</th><th>envolvente</th>
 <th>interpolado / perfil</th><th>balance</th><th>excluido</th><th>uso</th></tr>{''.join(rows)}</table>
-<p class="leg"><span><i style="background:#1f2937"></i>válido</span><span><i style="background:#d97706"></i>envolvente (media recortada 2 h)</span>
+<p class="leg"><span><i style="background:#1f2937"></i>válido</span><span><i style="background:#d97706"></i>envolvente (media recortada 2–4 h)</span>
 <span><i style="background:#2563eb"></i>interpolado</span><span><i style="background:#059669"></i>perfil típico</span>
 <span><i style="background:#7c3aed"></i>balance de masa</span><span><i style="background:#f87171"></i>excluido (sombreado)</span>
 <span>-- cambio de régimen · ⋯ corte</span></p>
@@ -1472,7 +1475,7 @@ def build_story(sensors, events, regimes, window, balance_msgs, net) -> List[str
                  + pd.Timestamp(allx[0]).strftime("%d/%m") + ". El componente rápido no está correlacionado "
                  "entre sensores: cada equipo muestrea la oscilación en un segundo distinto, así que el valor "
                  "instantáneo no es recuperable. Suele ser una VRP que bombea (sobredimensionada a caudal bajo) "
-                 "o aire en la red tras un vaciado. Se toma la media recortada de 2 h (4 h si la oscilación es muy fuerte), que es lo que reproduce un modelo "
+                 "o aire en la red tras un vaciado. Se toma la media recortada de 2 h (3 h si la oscilación supera 3 m y 4 h si supera 6 m), que es lo que reproduce un modelo "
                  "en periodo extendido.")
     for m in balance_msgs:
         S.append(esc(m))
@@ -1514,8 +1517,13 @@ def _regime_contrast(sensors, regimes, net) -> List[str]:
 
 
 # --------------------------------------------------------------------------- flujo principal
+# noise_abs: salto mediano entre lecturas de 15 min a partir del cual el día se suaviza.
+# Un sensor estable de la red salta 0,2–0,4 m; con aire o VRP inestable salta ≥ 1 m.
+# noise_mid: la ventana pasa de 2 h a 3 h. noise_strong: pasa a 4 h y el sensor va con tolerancia mayor.
 CTX = {"noise_floor": {"PRESSURE": 0.5, "LEVEL": 0.03, "FLOW": 0.2},
-       "noise_abs": {"PRESSURE": 3.0, "LEVEL": 0.15, "FLOW": 1.0},
+       "noise_abs": {"PRESSURE": 1.0, "LEVEL": 0.15, "FLOW": 1.0},
+       "noise_mid": {"PRESSURE": 3.0, "LEVEL": 0.3, "FLOW": 2.0},
+       "noise_strong": {"PRESSURE": 6.0, "LEVEL": 0.3, "FLOW": 2.0},
        "spike_abs": {"PRESSURE": 8.0, "LEVEL": 0.3, "FLOW": 2.0}}
 
 
