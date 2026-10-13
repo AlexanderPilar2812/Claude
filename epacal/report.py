@@ -73,13 +73,16 @@ def fig_pareto(h) -> str:
         k = h.choice_index
         ax.scatter([F[k, 0]], [F[k, 1]], s=120, color=C_CAL, edgecolor="white", linewidth=2,
                    label=f"Elegida #{k + 1}", zorder=4)
-        ax.scatter([h.obj_final[0]], [h.obj_final[1]], s=90, marker="D", color=C_ALT,
+        fp = h.final_point if h.final_point is not None else h.obj_final
+        ax.scatter([fp[0]], [fp[1]], s=90, marker="D", color=C_ALT,
                    edgecolor="white", linewidth=1.5, label="Final (refinada)", zorder=5)
         for i in range(len(F)):
             ax.annotate(f"#{i + 1}", (F[i, 0], F[i, 1]), xytext=(4, 4),
                         textcoords="offset points", fontsize=7, color=INK2)
-        ax.set_xlabel(h.objectives[0])
-        ax.set_ylabel(h.objectives[1])
+        nm = h.pareto_names or h.objectives
+        lab = {"CAMBIO": "CAMBIO respecto al modelo original (0–1)"}
+        ax.set_xlabel(lab.get(nm[0], nm[0]))
+        ax.set_ylabel(lab.get(nm[1], nm[1]))
         ax.legend(loc="upper right")
     else:
         ax.plot(F[:, 0], "o", color=C_OBS)
@@ -300,12 +303,27 @@ def build_report(path: str, cfg: dict, hyd=None, losses: Optional[dict] = None,
                          "Los sensores actuales no permiten estimarlos; considere añadir puntos de medida.</p>")
         parts.append(fig_sensitivity(h))
         parts.append("<h3>Frente de Pareto</h3>" + fig_pareto(h) + fig_convergence(h))
-        pf = pd.DataFrame(h.pareto_F, columns=h.objectives)
+        pf = pd.DataFrame(h.pareto_F, columns=h.pareto_names or h.objectives)
         pf.insert(0, "#", [f"#{i + 1}" for i in range(len(pf))])
-        pf["reglas"] = [sum(r.passed for r in rr) for rr in h.pareto_rules]
+        if h.pareto_F_valid is not None:
+            for j, o in enumerate(h.objectives):
+                pf[f"{o} validación"] = h.pareto_F_valid[:, j]
+        pf["reglas calib."] = [sum(r.passed for r in rr) for rr in h.pareto_rules]
+        if h.pareto_rules_valid:
+            pf["reglas valid."] = [sum(r.passed for r in rr) for rr in h.pareto_rules_valid]
         for j, p in enumerate(h.params):
             pf[p.name] = h.pareto_X[:, j]
+        pf["recomendada"] = ["★" if i == h.choice_index else "" for i in range(len(pf))]
+        parts.append("<p>Cada fila es una calibración válida del frente (ninguna es mejor que otra "
+                     "en ambos objetivos a la vez). La marcada con ★ es la recomendada por el "
+                     "criterio automático (más reglas cumplidas y punto de codo). Puede elegir "
+                     "otra: su INP está en la carpeta <code>pareto/</code>.</p>")
         parts.append(_table(pf))
+        pt = h.outputs.get("pareto_table")
+        if pt is not None and "inp" in pt.columns:
+            links = " · ".join(f"<a href='{html.escape(f)}'>#{i + 1}</a>"
+                               for i, f in enumerate(pt["inp"]))
+            parts.append(f"<p><b>Descargar INP de cada solución:</b> {links}</p>")
         parts.append("<h3>Métricas por sensor</h3>" + _table(h.sensor_metrics))
         biased = h.sensor_metrics[(h.sensor_metrics["tipo"] != "FLOW") &
                                   (h.sensor_metrics["periodo"] == "calibracion") &

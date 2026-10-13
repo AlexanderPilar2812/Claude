@@ -47,7 +47,9 @@ losses:
       # inflow_sensor: "3939065"
 
 hydraulic:
-  objectives: [FLOW, PRESSURE]
+  # PRESSURE: ajuste a los 14 sensores | CAMBIO: cuánto se modifica el modelo original.
+  # (El caudal de entrada es fijo con días tipo: se controla con la regla CAUDAL.)
+  objectives: [PRESSURE, CAMBIO]
   metric: rmse
   parameters:
     - {group: PVC,         type: roughness,     bounds: [0.0005, 0.1],  log: true}
@@ -57,9 +59,10 @@ hydraulic:
     - {group: TCV_ESTRANG, type: valve_setting, mode: multiplier, bounds: [0.05, 5.0], log: true}
     - {group: DEPOSITO,    type: reservoir_head, bounds: [-4.0, 4.0]}
   sensitivity: {enabled: true, freeze_below: 0.01}
-  # goal: rules -> para en cuanto una solución cumple TODAS las reglas de aceptación
-  # (modelo para escenarios, rápido).  goal: pareto -> afina el frente completo.
-  optimizer: {goal: rules, pop_size: 16, n_gen: 15, min_gens: 3, seed: 1, stall_gens: 5}
+  # goal: pareto -> frente de Pareto completo; se guarda un INP por solución en
+  #                 resultados/pareto/ para elegir la calibración (≈ 5-8 min)
+  # goal: rules  -> para en cuanto una solución cumple todas las reglas (≈ 2 min)
+  optimizer: {goal: pareto, pop_size: 24, n_gen: 15, seed: 1, stall_gens: 5, max_front: 15}
   selection: knee
   local_search: {enabled: true, max_iter: 12}
   loss_balance: {enabled: true, n_inner: 1}

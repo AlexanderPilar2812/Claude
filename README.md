@@ -19,6 +19,8 @@ Hace lo mismo que los módulos de calibración de Giswater y añade varias cosas
 | Pérdidas ↔ hidráulica | procesos separados: al cambiar la rugosidad, las fugas dejan de cumplir el objetivo | **balance de pérdidas embebido**: en cada candidato se re-equilibran emisores y patrón para que el objetivo de pérdidas y el caudal de entrada se cumplan siempre (opcionalmente, más rondas acopladas) |
 | Varios sectores | sí | sí. Si un patrón lo comparten varios sectores, se crea una copia por sector |
 
+> **Guía paso a paso para Windows: [INSTALACION.md](INSTALACION.md)** (`instalar.bat` y `calibrar.bat`).
+
 ## Instalación (EPANET 2.2)
 
 ```bash
@@ -119,7 +121,8 @@ los sensores. Es el mismo criterio que usa Giswater.
 | `informe_calibracion.html` | informe con gráficos, reglas, Pareto, sensibilidad, series y objetos modificados |
 | `objetos_modificados.csv` | feature_id, tipo, parámetro, valor calibrado y valor original (como en Giswater) |
 | `parametros_calibrados.csv` | valor, IC95, sensibilidad, si quedó congelado o en el límite del rango |
-| `frente_pareto.csv` | todas las soluciones del frente, con las reglas que cumple cada una |
+| `frente_pareto.csv` | todas las soluciones del frente: errores en calibración y validación, reglas cumplidas y parámetros |
+| `pareto/solucion_NN.inp` | un INP completo por solución del frente, para elegir la calibración |
 | `metricas_por_sensor.csv` | RMSE, MAE, sesgo, RME %, NSE, KGE y R², en calibración y en validación |
 | `series_observado_vs_simulado.csv` | series observadas, del modelo original y del calibrado |
 | `emisores_por_nudo.csv`, `resumen_perdidas_dma.csv`, `patrones_original_vs_ajustado.csv`, `balance_temporal_perdidas.csv` | resultados de la calibración de pérdidas |
@@ -152,6 +155,14 @@ El patrón se corrige en cada periodo con `m'(p) = m(p) · (Q_entrada(p) − L(p
 hasta cumplir el objetivo y la tolerancia del patrón. Por defecto, el caudal de entrada
 de referencia es la demanda del modelo original, que es la misma hipótesis que usa
 Giswater. Si se dispone del caudalímetro, puede usarse la serie medida (`inflow_file`).
+
+## Objetivo CAMBIO (parsimonia)
+
+`objectives: [PRESSURE, CAMBIO]` sustituye un objetivo que no aporta información
+(por ejemplo el caudal de entrada cuando se usan días tipo, que ninguna válvula ni
+rugosidad modifica) por **cuánto se aleja la solución del modelo original**. El
+frente va entonces desde "sin cambios" hasta "mejor ajuste", y el usuario elige el
+compromiso.
 
 ## Modo rápido para modelos de escenarios (`goal: rules`)
 

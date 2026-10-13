@@ -1,0 +1,51 @@
+[    0.5s] EPANET 2.2 (/usr/local/lib/python3.13/dist-packages/wntr/epanet/libepanet/linux-x64/libepanet22.so)
+[    0.7s]   sector ZP02EC: patrón ZP02EC-D-7D -> ZP02EC-D-7D
+[    2.4s] [pérdidas] método emitters, exponente 0.5, 1 sector(es), tolerancia 0.0005, máx. iteraciones 40
+[    4.3s]   iter  1: ZP02EC: 16.01 (obj 17) | cambio patrón 50.000 %
+[    6.4s]   iter  2: ZP02EC: 17.06 (obj 17) | cambio patrón 23.674 %
+[    8.3s]   iter  3: ZP02EC: 17.01 (obj 17) | cambio patrón 0.659 %
+[   10.2s]   iter  4: ZP02EC: 17 (obj 17) | cambio patrón 0.052 %
+[   12.2s]   ZP02EC: objetivo 17 -> logrado 17 | pérdidas 974.57 m3 de 5733.01 m3 (17.00 %)
+[   12.2s] [pérdidas] CONVERGIDO en 4 iteraciones. INP: /home/user/Claude/casos/ZP02EC/resultados/ZP02EC_calibrado_perdidas.inp
+[   12.2s]   balance de pérdidas embebido: 1 sector(es), 1 correcciones por evaluación (el objetivo de pérdidas se mantiene para cada rugosidad candidata)
+[   12.2s] [hidráulica] red: 1529 nodos, 1538 líneas | sensores: 15 (FLOW, PRESSURE) | instantes: 573 (calibración 476, validación 97)
+[   12.2s]   parámetro PVC:roughness: roughness/absolute sobre 1359 elementos, rango [0.0005, 0.1] log, inicial 0.0015
+[   12.2s]   parámetro PEAD:roughness: roughness/absolute sobre 75 elementos, rango [0.0005, 0.1] log, inicial 0.0015
+[   12.2s]   parámetro METAL:roughness: roughness/absolute sobre 35 elementos, rango [0.01, 5] log, inicial 0.2591
+[   12.2s]   parámetro TCV_ENTRADA:valve_setting: valve_setting/absolute sobre 1 elementos, rango [0, 200], inicial 50
+[   12.2s]   parámetro TCV_ESTRANG:valve_setting: valve_setting/multiplier sobre 18 elementos, rango [0.05, 5] log, inicial 1
+[   12.2s]   parámetro DEPOSITO:reservoir_head: reservoir_head/offset sobre 1 elementos, rango [-4, 4], inicial 0
+[   14.0s]   modelo original: PRESSURE=1.675
+[   14.0s]   procesos de simulación en paralelo: 3
+[   19.1s]   sensibilidad PVC:roughness: CSS relativa 0.003
+[   19.1s]   sensibilidad PEAD:roughness: CSS relativa 0.000
+[   19.1s]   sensibilidad METAL:roughness: CSS relativa 0.000
+[   19.1s]   sensibilidad TCV_ENTRADA:valve_setting: CSS relativa 0.164
+[   19.1s]   sensibilidad TCV_ESTRANG:valve_setting: CSS relativa 0.136
+[   19.1s]   sensibilidad DEPOSITO:reservoir_head: CSS relativa 1.000
+[   19.1s]   parámetros congelados (no identificables con los sensores actuales): ['PVC:roughness', 'PEAD:roughness', 'METAL:roughness']
+[   19.1s] [hidráulica] NSGA-II: población 24, generaciones 15, 3 variables
+[   46.7s]   gen   1 | evals    48 | frente   6 | HV 2.7212 | mejor por objetivo [1.1601 0.    ]
+[   60.8s]   gen   2 | evals    72 | frente   6 | HV 2.7397 | mejor por objetivo [1.1601 0.    ]
+[   74.4s]   gen   3 | evals    96 | frente   7 | HV 2.803 | mejor por objetivo [1.1597 0.    ]
+[   88.3s]   gen   4 | evals   120 | frente   9 | HV 2.8104 | mejor por objetivo [1.1597 0.    ]
+[  102.4s]   gen   5 | evals   144 | frente  11 | HV 2.8151 | mejor por objetivo [1.1491 0.    ]
+[  116.3s]   gen   6 | evals   168 | frente  19 | HV 2.8232 | mejor por objetivo [1.1491 0.    ]
+[  131.7s]   gen   7 | evals   192 | frente  20 | HV 2.8284 | mejor por objetivo [1.1443 0.    ]
+[  147.0s]   gen   8 | evals   216 | frente  21 | HV 2.8286 | mejor por objetivo [1.1443 0.    ]
+[  160.9s]   gen   9 | evals   240 | frente  23 | HV 2.8342 | mejor por objetivo [1.1315 0.    ]
+[  174.7s]   gen  10 | evals   264 | frente  24 | HV 2.8354 | mejor por objetivo [1.1315 0.    ]
+[  188.4s]   gen  11 | evals   288 | frente  24 | HV 2.8386 | mejor por objetivo [1.1237 0.    ]
+[  202.2s]   gen  12 | evals   312 | frente  24 | HV 2.8391 | mejor por objetivo [1.1237 0.    ]
+[  216.0s]   gen  13 | evals   336 | frente  24 | HV 2.8405 | mejor por objetivo [1.1237 0.    ]
+[  229.6s]   gen  14 | evals   360 | frente  24 | HV 2.8406 | mejor por objetivo [1.1237 0.    ]
+[  243.4s]   gen  15 | evals   384 | frente  24 | HV 2.8406 | mejor por objetivo [1.1237 0.    ]
+[  252.3s]   frente de Pareto: 15 soluciones; elegida #1 (PRESSURE=1.124, CAMBIO=0.3318, reglas 3/3)
+[  287.4s]   refinamiento local: coste 0.500001 -> 0.491695 (12 iteraciones, estado 0)
+[  289.2s]   se acepta la solución refinada
+[  323.0s]   15 INP del frente de Pareto en /home/user/Claude/casos/ZP02EC/resultados/pareto
+[  323.1s]   INP calibrado: /home/user/Claude/casos/ZP02EC/resultados/ZP02EC_calibrado_hidraulica.inp
+[  323.1s] [hidráulica] terminado en 284 s, 836 simulaciones
+[  323.5s]   métricas finales comparadas con el modelo original: PRESSURE 1.664 -> 1.114
+[  326.5s] INP final: /home/user/Claude/casos/ZP02EC/resultados/ZP02EC_CALIBRADO.inp
+[  326.5s] Informe:   /home/user/Claude/casos/ZP02EC/resultados/informe_calibracion.html

@@ -1,5 +1,5 @@
 {
-  "inp": "/home/user/Claude/casos/ZP02EC/resultados_dias_tipo/ZP02EC_calibrado_perdidas.inp",
+  "inp": "/home/user/Claude/casos/ZP02EC/resultados/ZP02EC_calibrado_perdidas.inp",
   "convergido": true,
   "iteraciones": 4,
   "metodo": "emitters",

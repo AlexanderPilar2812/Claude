@@ -62,6 +62,10 @@ class HydraulicResult:
     modified: pd.DataFrame
     param_table: pd.DataFrame
     outputs: Dict[str, str] = field(default_factory=dict)
+    pareto_names: Optional[List[str]] = None       # nombres de las columnas de pareto_F
+    final_point: Optional[np.ndarray] = None       # solución final en el espacio de pareto_F
+    pareto_F_valid: Optional[np.ndarray] = None    # objetivos en el periodo de validación
+    pareto_rules_valid: Optional[List[list]] = None
 
 
 def sensor_table(obs: Observations, sim0: np.ndarray, sim_f: np.ndarray) -> pd.DataFrame:
@@ -138,7 +142,13 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                 f"mantiene para cada rugosidad candidata)")
     prj.close()
     objectives = [k.upper() for k in hc.get("objectives", obs.kinds)]
-    objectives = [{"CAUDAL": "FLOW", "PRESION": "PRESSURE"}.get(k, k) for k in objectives]
+    objectives = [{"CAUDAL": "FLOW", "PRESION": "PRESSURE", "CHANGE": "CAMBIO"}.get(k, k)
+                  for k in objectives]
+    # CAMBIO: objetivo de parsimonia = cuánto se aleja la solución del modelo original
+    # (media de |u - u0| en el espacio normalizado de los parámetros libres, 0..1)
+    extra_obj = [o for o in objectives if o == "CAMBIO"]
+    objectives = [o for o in objectives if o != "CAMBIO"]
+    pareto_names = objectives + extra_obj
     rules = cfg.get("acceptance", [])
 
     log(f"[{tag}] red: {len(net.node_ids)} nodos, {len(net.link_ids)} líneas | "
@@ -236,6 +246,9 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
         F = np.array([d["objectives"] for d in res])
         CV = np.array([0.0 if d["ok"] else 1.0 for d in res])
         F = np.where(np.isfinite(F), F, PENALTY)
+        if extra_obj:
+            u0f = np.array([p.to_unit(v) for p, v, fr in zip(params, x0, free) if fr])
+            F = np.column_stack([F, np.mean(np.abs(np.asarray(U) - u0f), axis=1)])
         return F, CV
 
     u_seed = np.array([[p.to_unit(v) for p, v, fr in zip(params, x0, free) if fr]])
@@ -276,10 +289,14 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
     pr = [evaluate_rules(rules, obs.sensors, obs.values, s, obs.calib_mask) for s in sims]
     n_pass = np.array([sum(r.passed for r in rr) for rr in pr])
     score = np.array([rules_score(rr) for rr in pr])
+    vmask = ~obs.calib_mask
+    PF_valid = np.array([pool.local.objectives(sm, vmask) for sm in sims]) if vmask.any() else None
+    pr_valid = [evaluate_rules(rules, obs.sensors, obs.values, sm, vmask) for sm in sims] \
+        if vmask.any() else None
     k = choose(PF, hc.get("selection", "knee"), hc.get("selection_weights"), n_pass, score)
     x_choice = PX[k]
     log(f"  frente de Pareto: {len(PX)} soluciones; elegida #{k + 1} "
-        f"({', '.join(f'{o}={v:.4g}' for o, v in zip(objectives, PF[k]))}, "
+        f"({', '.join(f'{o}={v:.4g}' for o, v in zip(pareto_names, PF[k]))}, "
         f"reglas {n_pass[k]}/{len(rules)})")
 
     # ---- 5. refinamiento local
@@ -314,6 +331,9 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
     # ---- 6. diagnóstico final
     d = pool.map([x_final], want=("sim", "objectives"))[0]
     sim_f, f_final = d["sim"], d["objectives"]
+    final_point = np.array(list(f_final) + ([float(np.mean(
+        [abs(p.to_unit(v) - p.to_unit(v0)) for p, v, v0, fr in zip(params, x_final, x0, free) if fr]))]
+        if extra_obj else []))
     sens_f = None
     lm_scale = dict(scale)
     if sc.get("enabled", True):
@@ -368,6 +388,8 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
         sensor_metrics=sm, sensitivity_initial=sens0, sensitivity_final=sens_f,
         frozen=frozen, history=res.history, n_evals=pool.n_evals + res.n_evals,
         elapsed=time.time() - t0, modified=mod, param_table=ptab)
+    result.pareto_F_valid, result.pareto_rules_valid = PF_valid, pr_valid
+    result.pareto_names, result.final_point = pareto_names, final_point
     write_hydraulic_outputs(result, cfg, inp_file, out_dir, lib, log, spec)
     log(f"[{tag}] terminado en {result.elapsed:.0f} s, {result.n_evals} simulaciones")
     return result
@@ -392,14 +414,48 @@ def write_hydraulic_outputs(r: HydraulicResult, cfg, inp_file, out_dir, lib, log
     r.modified.to_csv(p("objetos_modificados.csv"), index=False)
     r.param_table.to_csv(p("parametros_calibrados.csv"), index=False)
     r.sensor_metrics.to_csv(p("metricas_por_sensor.csv"), index=False)
-    pf = pd.DataFrame(r.pareto_F, columns=[f"{o}_{cfg.get('hydraulic', {}).get('metric', 'rmse')}"
-                                           for o in r.objectives])
+    names = r.pareto_names or r.objectives
+    met = cfg.get('hydraulic', {}).get('metric', 'rmse')
+    pf = pd.DataFrame(r.pareto_F, columns=[f"{o}_{met}" if o != "CAMBIO" else "CAMBIO_0a1"
+                                           for o in names])
     for j, prm in enumerate(r.params):
         pf[prm.name] = r.pareto_X[:, j]
+    if r.pareto_F_valid is not None:
+        for j, o in enumerate(r.objectives):
+            pf[f"{o}_validacion"] = r.pareto_F_valid[:, j]
     pf["reglas_cumplidas"] = [sum(x.passed for x in rr) for rr in r.pareto_rules]
-    pf["elegida"] = [i == r.choice_index for i in range(len(pf))]
+    if r.pareto_rules:
+        for q, rule in enumerate(r.pareto_rules[0]):
+            pf[f"{rule.name}_%obs_ok"] = [100 * rr[q].obs_ok / max(rr[q].obs_total, 1)
+                                          for rr in r.pareto_rules]
+    if r.pareto_rules_valid:
+        pf["reglas_validacion"] = [sum(x.passed for x in rr) for rr in r.pareto_rules_valid]
+    pf["recomendada"] = [i == r.choice_index for i in range(len(pf))]
     pf.index = [f"#{i + 1}" for i in range(len(pf))]
+    # un INP por solución del frente, para que el usuario elija
+    hc = cfg.get("hydraulic", {})
+    if hc.get("export_pareto", True) and len(r.pareto_X):
+        from .simulator import Evaluator
+        pdir = os.path.join(out_dir, "pareto")
+        os.makedirs(pdir, exist_ok=True)
+        if spec is None:
+            spec_ = EvalSpec(inp_file=inp_file, params=r.params, obs=r.obs,
+                             objectives=r.objectives, lib_path=lib)
+        else:
+            spec_ = spec
+        ev = Evaluator(spec_)
+        names = []
+        for i, x in enumerate(r.pareto_X):
+            fn = os.path.join(pdir, f"solucion_{i + 1:02d}.inp")
+            ev.simulate(x)
+            ev.save_inp(fn)
+            names.append(os.path.relpath(fn, out_dir))
+        ev.close()
+        pf["inp"] = names
+        r.outputs["pareto_dir"] = pdir
+        log(f"  {len(names)} INP del frente de Pareto en {pdir}")
     pf.to_csv(p("frente_pareto.csv"), index_label="solucion")
+    r.outputs["pareto_table"] = pf
     ts = r.obs.timestamps()
     rows = {}
     for i, s in enumerate(r.obs.sensors):
