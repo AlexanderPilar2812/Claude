@@ -19,6 +19,7 @@ from .observations import Observations
 from .parameters import Parameter, apply_parameters
 
 PENALTY = 1e6
+LEVEL_PROP = -1        # marcador interno: nivel de tanque calculado como H − cota
 
 
 @dataclass
@@ -53,7 +54,9 @@ class Evaluator:
                 if s.kind == "HEAD":
                     prop = en.EN_HEAD
                 elif s.kind == "LEVEL" and self.prj.node_type(idx) == en.EN_TANK:
-                    prop = en.EN_TANKLEVEL
+                    # nivel = cota piezométrica − cota de solera (EN_TANKLEVEL devuelve el
+                    # nivel INICIAL durante la simulación, tanto en EPANET 2.2 como en 2.3)
+                    prop = LEVEL_PROP
                 else:
                     prop = en.EN_PRESSURE
                 self.getters.append((True, idx, prop, False))
@@ -126,7 +129,10 @@ class Evaluator:
             if k is None:
                 return
             for j, (is_node, idx, prop, use_abs) in enumerate(getters):
-                v = prj.get_node(idx, prop) if is_node else prj.get_link(idx, prop)
+                if prop == LEVEL_PROP:
+                    v = prj.get_node(idx, en.EN_HEAD) - prj.get_node(idx, en.EN_ELEVATION)
+                else:
+                    v = prj.get_node(idx, prop) if is_node else prj.get_link(idx, prop)
                 sim[j, k] = abs(v) if use_abs else v
             if extra is not None:
                 extra(prj, t, k)

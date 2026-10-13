@@ -1,0 +1,58 @@
+# Prueba de epacal en Windows: instala con instalar.bat y calibra con calibrar.bat,
+# exactamente como lo haría un usuario. Los resultados se guardan como artefacto.
+name: Prueba en Windows
+
+on:
+  push:
+    branches: [claude/epanet-calibration-algorithm-v0cgd7]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Versión de Windows y Python
+        shell: cmd
+        run: |
+          ver
+          python --version
+
+      - name: instalar.bat
+        shell: cmd
+        run: call instalar.bat < NUL
+
+      - name: Pruebas automáticas (pytest)
+        shell: cmd
+        run: |
+          call .venv\Scripts\activate.bat
+          pip install pytest
+          python -m pytest -q tests
+
+      - name: calibrar.bat – caso con tanque (nivel)
+        shell: cmd
+        run: call calibrar.bat examples\caso_tanque\config.yaml < NUL
+
+      - name: calibrar.bat – ZP02EC (pérdidas 17 % + Pareto)
+        shell: cmd
+        run: call calibrar.bat casos\ZP02EC\config.yaml < NUL
+
+      - name: Comprobar resultados
+        shell: cmd
+        run: |
+          call .venv\Scripts\activate.bat
+          python -c "import pandas as pd, json, os; t=pd.read_csv(r'examples\caso_tanque\resultados\parametros_calibrados.csv'); print(t[['parametro','calibrado']]); z=json.load(open(r'casos\ZP02EC\resultados\resumen_perdidas.json', encoding='utf-8')); print('ZP02EC perdidas', z['sectores'][0]['logrado']); n=len(os.listdir(r'casos\ZP02EC\resultados\pareto')); print('INP de Pareto:', n); assert n > 0"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resultados-windows
+          path: |
+            casos/ZP02EC/resultados/
+            examples/caso_tanque/resultados/

@@ -1,0 +1,47 @@
+# =====================================================================
+#  Caso de prueba: calibración del NIVEL de un tanque de cola (TANK)
+#  (datos generados con examples/generar_caso_tanque.py; solución en verdad.json)
+# =====================================================================
+name: Cal_Tanque
+inp: modelo_inicial.inp
+output_dir: resultados
+workers: 0
+epanet_version: "2.2"
+
+groups:
+  METAL_OLD:   {select: {tag: METAL_OLD, link_type: PIPE}}
+  PLASTIC_OLD: {select: {tag: PLASTIC_OLD, link_type: PIPE}}
+  TCV_LLENADO: {select: {ids: [TCV_LL]}}
+  TANQUE:      {select: {ids: [T1]}}
+
+observations:
+  files:
+    - {file: calibr_nivel.dat,   type: LEVEL}      # nivel del tanque (m sobre solera)
+    - {file: calibr_caudal.dat,  type: FLOW}
+    - {file: calibr_presion.dat, type: PRESSURE}
+  start: "2026-01-01 00:00:00"
+  step: 900
+  validation_start: "2026-01-04 00:00:00"   # último día sólo para validar
+  outlier_filter: {method: hampel, window: 6, n_sigma: 3.5}
+
+hydraulic:
+  objectives: [LEVEL, PRESSURE, FLOW]
+  metric: rmse
+  parameters:
+    - {group: TANQUE,      type: tank_diameter,  bounds: [10.0, 40.0]}
+    - {group: TANQUE,      type: tank_level,     bounds: [0.5, 6.5]}     # nivel inicial
+    - {group: TCV_LLENADO, type: valve_setting,  bounds: [0.0, 60.0]}
+    - {group: METAL_OLD,   type: roughness,      bounds: [0.01, 5.0], log: true}
+    - {group: PLASTIC_OLD, type: roughness,      bounds: [0.0005, 0.1], log: true}
+  sensitivity: {enabled: true, freeze_below: 0.01}
+  optimizer: {goal: pareto, pop_size: 32, n_gen: 20, seed: 1, stall_gens: 6, max_front: 15}
+  selection: knee
+  local_search: {enabled: true, max_iter: 12}
+
+acceptance:
+  - {name: NIVEL,   kind: LEVEL,    error: absolute, threshold: 0.2, timesteps_pct: 80, points_pct: 100}
+  - {name: CAUDAL,  kind: FLOW,     error: relative, threshold: 15,  timesteps_pct: 75, points_pct: 100}
+  - {name: PRESION, kind: PRESSURE, error: absolute, threshold: 5,   timesteps_pct: 80, points_pct: 80}
+
+workflow:
+  mode: hydraulic

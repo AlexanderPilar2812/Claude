@@ -1,0 +1,20 @@
+{
+  "verdad": {
+    "diam": 24.0,
+    "init": 3.0,
+    "tcv": 18.0,
+    "METAL_OLD": 1.9,
+    "PLASTIC_OLD": 0.0015
+  },
+  "inicial": {
+    "diam": 18.0,
+    "init": 4.2,
+    "tcv": 4.0,
+    "METAL_OLD": 0.2591,
+    "PLASTIC_OLD": 0.0015
+  },
+  "nivel_tanque_min_max": [
+    2.8105790899021343,
+    4.126483387982759
+  ]
+}

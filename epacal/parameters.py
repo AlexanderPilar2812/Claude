@@ -11,7 +11,9 @@ Cada parámetro actúa sobre una familia de elementos:
     demand_multiplier     nodo      multiplica las demandas base
     emitter_multiplier    nodo      multiplica los coeficientes de emisor
     reservoir_head        nodo      desplaza el nivel del embalse (offset, m)
-    elevation_offset      nodo      desplaza la cota (corrige cotas de sensores)
+    elevation_offset      nodo      desplaza la cota (corrige cotas de sensores o de tanques)
+    tank_level            tanque    nivel inicial del tanque (m)
+    tank_diameter         tanque    diámetro del tanque (absoluto o multiplicador)
 
 ``mode``: ``absolute`` (el valor se asigna tal cual) o ``multiplier`` (valor
 original × x) u ``offset`` (original + x).  ``log: true`` explora el rango en
@@ -30,11 +32,13 @@ from .network import NetworkInfo
 LINK_PARAMS = {"roughness": en.EN_ROUGHNESS, "valve_setting": en.EN_INITSETTING,
                "minor_loss": en.EN_MINORLOSS, "leak_area": en.EN_LEAK_AREA}
 NODE_PARAMS = {"demand_multiplier": None, "emitter_multiplier": en.EN_EMITTER,
-               "reservoir_head": en.EN_ELEVATION, "elevation_offset": en.EN_ELEVATION}
+               "reservoir_head": en.EN_ELEVATION, "elevation_offset": en.EN_ELEVATION,
+               "tank_level": en.EN_TANKLEVEL, "tank_diameter": en.EN_TANKDIAM}
 DEFAULT_MODE = {"roughness": "absolute", "valve_setting": "absolute",
                 "minor_loss": "absolute", "leak_area": "absolute",
                 "demand_multiplier": "multiplier", "emitter_multiplier": "multiplier",
-                "reservoir_head": "offset", "elevation_offset": "offset"}
+                "reservoir_head": "offset", "elevation_offset": "offset",
+                "tank_level": "absolute", "tank_diameter": "absolute"}
 
 
 @dataclass
@@ -106,6 +110,8 @@ def build_parameters(cfgs: List[dict], groups: dict, net: NetworkInfo,
             idx = net.select_nodes(crit)
             if ptype == "reservoir_head":
                 idx = idx[net.node_type[idx] == en.EN_RESERVOIR]
+            elif ptype in ("tank_level", "tank_diameter"):
+                idx = idx[net.node_type[idx] == en.EN_TANK]
             elif ptype in ("demand_multiplier", "emitter_multiplier"):
                 idx = idx[net.node_type[idx] == en.EN_JUNCTION]
             if ptype == "demand_multiplier":

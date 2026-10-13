@@ -135,3 +135,27 @@ def test_epanet22_matches_23(caso):
     assert abs(out[0][0] - out[1][0]) / out[1][0] < 1e-3
     assert abs(out[0][1] - out[1][1]) / out[1][1] < 1e-3
     assert np.max(np.abs(out[0][2] - out[1][2])) < 0.01
+
+
+def test_tank_level_calibration(tmp_path):
+    """Nivel de tanque: recupera diámetro, nivel inicial y consigna de la TCV de llenado."""
+    import yaml
+    from examples.generar_caso_tanque import main as gen_tanque
+    from epacal.workflow import run
+    gen_tanque(str(tmp_path))
+    with open(os.path.join(ROOT, "examples", "caso_tanque", "config.yaml")) as fh:
+        cfg = yaml.safe_load(fh)
+    cfg["hydraulic"]["optimizer"] = {"goal": "pareto", "pop_size": 16, "n_gen": 8, "seed": 1,
+                                     "stall_gens": 4, "max_front": 6}
+    cfg["hydraulic"]["local_search"] = {"enabled": True, "max_iter": 8}
+    cfg["workers"] = 2
+    p = os.path.join(tmp_path, "config.yaml")
+    with open(p, "w") as fh:
+        yaml.safe_dump(cfg, fh)
+    res = run(p, None, os.path.join(tmp_path, "res"), log=lambda m: None)
+    h = res["hydraulic"]
+    x = dict(zip([q.name for q in h.params], h.x_final))
+    assert abs(x["TANQUE:tank_diameter"] - 24.0) < 2.0
+    assert abs(x["TANQUE:tank_level"] - 3.0) < 0.2
+    i = h.objectives.index("LEVEL")
+    assert h.obj_final[i] < 0.1 < h.obj_initial[i]

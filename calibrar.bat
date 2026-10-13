@@ -16,7 +16,10 @@ set CFG=%~1
 if "%CFG%"=="" set CFG=casos\ZP02EC\config.yaml
 echo Calibrando con %CFG% ...
 python -m epacal "%CFG%"
+set ERR=%ERRORLEVEL%
 echo.
 echo Terminado. Abra informe_calibracion.html en la carpeta de resultados
 echo (indicada arriba en la linea "Informe:").
+if not "%ERR%"=="0" echo *** La calibracion termino con ERROR %ERR% ***
 pause
+exit /b %ERR%
