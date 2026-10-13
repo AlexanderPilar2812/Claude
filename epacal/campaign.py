@@ -1043,9 +1043,11 @@ def write_excel(sensors, events, regimes, window, summary_rows, out_path) -> Non
     _color_excel(out_path, [s.name[:31] for s in sensors if s.clean is not None])
 
 
-def write_simple_excel(sensors, window, title, out_path) -> None:
+def write_simple_excel(sensors, window, title, out_path, span=None, charts=False,
+                       exclude=()) -> None:
     """Excel sencillo con formato corporativo: por sensor, dato inicial, marca, valor de
-    reemplazo y dato depurado calculado con fórmula."""
+    reemplazo y dato depurado calculado con fórmula. ``span`` limita las filas a una
+    ventana (inicio, fin); ``charts`` añade una hoja «Gráficos» con todos los sensores."""
     import openpyxl
     from openpyxl.formatting.rule import FormulaRule
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -1077,7 +1079,8 @@ def write_simple_excel(sensors, window, title, out_path) -> None:
         c.font, c.fill = head, fill_head
         c.alignment = Alignment(vertical="center")
     ws.row_dimensions[4].height = 22
-    usable = [s for s in sensors if s.clean is not None]
+    usable = [s for s in sensors if s.clean is not None and s.name not in exclude]
+    chart_refs = []
     names = {}
     for s in usable:
         nm = re.sub(r"[\[\]\*\?/\\:]", "_", s.name)[:31]
@@ -1145,19 +1148,30 @@ def write_simple_excel(sensors, window, title, out_path) -> None:
             c.font, c.fill = head, fill_head
             c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         sh.row_dimensions[R0].height = 30
-        g = s.grid
+        if span is None:
+            sel = np.ones(len(s.grid), bool)
+            inner = sel
+        else:
+            inner = np.asarray((s.grid.index >= span[0]) & (s.grid.index <= span[1]))
+            pos = np.where(inner)[0]
+            sel = np.zeros(len(s.grid), bool)
+            if len(pos):
+                # margen de 8 lecturas a cada lado para que la media móvil del borde sea completa
+                sel[max(pos[0] - 8, 0):min(pos[-1] + 9, len(sel))] = True
+            inner = inner[sel]
+        g, flag_s, clean_s, reason_s = s.grid[sel], s.flag[sel], s.clean[sel], s.reason[sel]
         n = len(g)
         first, last = R0 + 1, R0 + n
         for k in range(n):
             row = first + k
-            fl = int(s.flag.iloc[k])
+            fl = int(flag_s.iloc[k])
             v = g.iloc[k]
             sh.cell(row, 1, g.index[k].to_pydatetime()).number_format = "dd/mm/yyyy hh:mm"
             c = sh.cell(row, 2, None if pd.isna(v) else round(float(v), 4))
             c.number_format = "0.00"
             sh.cell(row, 3, fl).font = blue
-            if fl in (2, 3, 4) and pd.notna(s.clean.iloc[k]):
-                c = sh.cell(row, 4, round(float(s.clean.iloc[k]), 4))
+            if fl in (2, 3, 4) and pd.notna(clean_s.iloc[k]):
+                c = sh.cell(row, 4, round(float(clean_s.iloc[k]), 4))
                 c.number_format, c.font = "0.00", blue
             a0, a1 = max(first, row - win), min(last, row + win)
             sh.cell(row, 5, f'=IF(OR(C{row}=9,B{row}=""),"",B{row}-$C$3)').number_format = "0.00"
@@ -1165,8 +1179,8 @@ def write_simple_excel(sensors, window, title, out_path) -> None:
                             f'IF(COUNT(E{a0}:E{a1})=0,"",TRIMMEAN(E{a0}:E{a1},0.5)),IF(D{row}="","",D{row}))))')
             sh.cell(row, 6).number_format = "0.00"
             sh.cell(row, 6).font = Font(name=F, size=10, bold=True)
-            if s.reason.iloc[k]:
-                sh.cell(row, 7, s.reason.iloc[k])
+            if reason_s.iloc[k]:
+                sh.cell(row, 7, reason_s.iloc[k])
         for row in sh.iter_rows(min_row=first, max_row=last, max_col=5):
             for c in row:
                 if c.column in (1, 2, 5):
@@ -1178,6 +1192,49 @@ def write_simple_excel(sensors, window, title, out_path) -> None:
             sh.column_dimensions[get_column_letter(j)].width = w
         sh.freeze_panes = sh.cell(first, 1)
         sh.auto_filter.ref = f"A{R0}:G{last}"
+        ii = np.where(inner)[0]
+        for k in range(n):
+            if not inner[k]:
+                for col in range(1, 8):
+                    sh.cell(first + k, col).font = Font(name=F, size=9, italic=True, color="A6A6A6")
+                sh.cell(first + k, 7, "fuera de la ventana: solo para la media móvil del borde")
+        chart_refs.append((s, names[s.name], first + int(ii[0]) if len(ii) else first,
+                           first + int(ii[-1]) if len(ii) else last))
+    if charts and chart_refs:
+        from openpyxl.chart import ScatterChart, Reference, Series
+        gs = wb.create_sheet("Gráficos", 1)
+        gs.sheet_view.showGridLines = False
+        gs["A1"] = "Dato inicial y dato depurado por sensor"
+        gs["A1"].font = Font(name=F, bold=True, size=16, color=RED)
+        gs["A2"] = (f"Ventana {fmt(span[0])} – {fmt(span[1])}" if span else "Toda la campaña") + \
+            " · gris: dato inicial · rojo: dato depurado"
+        gs["A2"].font = Font(name=F, size=10, color="595959")
+        for j, (s, nm, first, last) in enumerate(chart_refs):
+            ch = ScatterChart()
+            ch.title = f"{s.name} · {KIND_TXT[s.kind]} ({UNIT[s.kind]})"
+            ch.style = 13
+            ch.height, ch.width = 7.0, 16.5
+            ch.y_axis.title = UNIT[s.kind]
+            ch.x_axis.number_format = "dd/mm"
+            ch.x_axis.majorUnit = 1
+            ch.legend.position = "b"
+            ws_ = wb[nm]
+            xs = Reference(ws_, min_col=1, min_row=first, max_row=last)
+            for col, color, w, lab in ((2, "A6A6A6", 9000, "Dato inicial"), (6, RED, 15000, "Dato depurado")):
+                sr = Series(Reference(ws_, min_col=col, min_row=first, max_row=last), xs, title=lab)
+                sr.marker.symbol = "none"
+                sr.graphicalProperties.line.solidFill = color
+                sr.graphicalProperties.line.width = w
+                sr.smooth = False
+                ch.series.append(sr)
+            vals = pd.concat([g_ for g_ in (s.grid[span[0]:span[1]] if span else s.grid,
+                                              s.clean[span[0]:span[1]] if span else s.clean)]).dropna()
+            if len(vals):
+                ch.x_axis.scaling.min = float((span[0] if span else s.grid.index[0]).to_julian_date() - 2415018.5)
+                ch.x_axis.scaling.max = float((span[1] if span else s.grid.index[-1]).to_julian_date() - 2415018.5)
+            ch.x_axis.delete = False
+            ch.y_axis.delete = False
+            gs.add_chart(ch, f"{'A' if j % 2 == 0 else 'K'}{4 + (j // 2) * 15}")
     wb.save(out_path)
 
 

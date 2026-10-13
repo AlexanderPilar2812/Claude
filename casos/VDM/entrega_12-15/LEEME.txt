@@ -1,0 +1,17 @@
+ZP-05 Vista del Mar · datos para la calibración (ventana 12/09 00:00 – 15/09 23:45)
+
+datos_depurados_12-15.xlsx
+  Resumen   sensores, elemento del INP, offset, uso recomendado y leyenda de marcas.
+  Gráficos  dato inicial (gris) y dato depurado (rojo) de todos los sensores.
+  P1 … N_Durazno  una hoja por sensor: dato inicial, marca, reemplazo, corregido y
+            dato depurado con fórmula. Las filas en gris fuera de la ventana sólo
+            sirven para que la media móvil del borde sea completa.
+  Presión en m c.a. a la cota del sensor; caudal en L/s; nivel en m.
+
+calibr_presion_12-15.dat · calibr_caudal_12-15.dat   (formato EPANET: id  hora  valor)
+  Hora 0 = 10/09/2026 00:15 = inicio del INP (el patrón PAT-Q_SAL_FINCA es Q4 medido
+  desde esa hora). La ventana va de la hora 47,75 a la 143,50.
+  Presión pasada a la cota del nudo del INP con la cota GNSS (corrección en la cabecera
+  de cada sensor; L2 sin corrección, su cota GNSS no es válida).
+  Caudal en m³/h (unidades del INP). Q2 no se incluye: el medidor lee un 26 % de más.
+  Sólo datos válidos o reemplazados (marcas 0–3); los excluidos (marca 9) no se escriben.
