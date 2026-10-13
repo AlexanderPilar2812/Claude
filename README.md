@@ -19,7 +19,7 @@ Hace lo mismo que los módulos de calibración de Giswater y añade varias cosas
 | Pérdidas ↔ hidráulica | procesos separados: al cambiar la rugosidad, las fugas dejan de cumplir el objetivo | **balance de pérdidas embebido**: en cada candidato se re-equilibran emisores y patrón para que el objetivo de pérdidas y el caudal de entrada se cumplan siempre (opcionalmente, más rondas acopladas) |
 | Varios sectores | sí | sí. Si un patrón lo comparten varios sectores, se crea una copia por sector |
 
-> **Guía paso a paso para Windows: [INSTALACION.md](INSTALACION.md)** (`instalar.bat` y `calibrar.bat`).
+> **Aplicación de escritorio para Windows:** instalador `EPACAL-Setup-1.1.0.exe` en *Releases*. Guía paso a paso: [INSTALACION.md](INSTALACION.md). Ampliable con plugins (`plugins/ejemplo_plugin.py`).
 
 ## Instalación (EPANET 2.2)
 

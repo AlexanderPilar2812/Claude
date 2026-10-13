@@ -4,3 +4,8 @@ resultados*/
 .pytest_cache/
 *.rpt
 *.bin
+dist/
+build/
+Output/
+*.spec.bak
+packaging/epacal.ico

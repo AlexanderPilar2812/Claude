@@ -1,5 +1,44 @@
 # Guía de instalación y uso (Windows)
 
+## Opción recomendada: aplicación de escritorio (instalador)
+
+1. Abra el repositorio en GitHub → **Releases** → **EPACAL 1.1.0 (Windows)** y
+   descargue **`EPACAL-Setup-1.1.0.exe`**.
+2. Ejecútelo. No pide permisos de administrador ni necesita Python. Si Windows
+   SmartScreen avisa ("aplicación no reconocida"), pulse *Más información → Ejecutar
+   de todas formas*: el instalador no está firmado digitalmente.
+3. Abra **EPACAL** desde el escritorio o el menú Inicio.
+
+Uso de la aplicación:
+
+| Pestaña | Qué se hace |
+|---|---|
+| **1. Datos** | elegir el INP, añadir los ficheros de medidas (presión, caudal, nivel) y la carpeta de resultados; pulsar **Analizar modelo** |
+| **2. Ajustes** | % de pérdidas, parámetros a calibrar (detectados solos desde el INP; clic en ✓ para activar, doble clic para editar los límites), objetivos, tipo de calibración y reglas de aceptación |
+| **3. Calibrar** | botón **Calibrar**, progreso y registro en vivo; se puede **Cancelar** |
+| **4. Resultados** | frente de Pareto: elegir una solución y **Guardar INP…**; **Abrir informe** |
+| **Avanzado** | configuración completa (YAML) editable y carpeta de plugins |
+
+En `Documentos\EPACAL\ejemplos` vienen ZP02EC y el caso del tanque, listos para
+abrir con *Archivo → Abrir configuración*.
+
+### Ampliar EPACAL por código (plugins)
+
+Copie ficheros `.py` en `Documentos\EPACAL\plugins`. Como plantilla puede usar
+`ejemplo_plugin.py.txt`, que viene en esa carpeta: renómbrelo a `.py`. Un plugin
+puede añadir:
+
+- **objetivos nuevos** (`register_objective`), por ejemplo el error de presión nocturno;
+- **tipos de parámetro nuevos** sobre cualquier propiedad de EPANET (`register_parameter_type`);
+- **acciones al terminar** (`register_result_hook`): exportar a Excel, a una base de datos…
+
+No hace falta recompilar: se cargan al abrir la aplicación y la pestaña Avanzado
+indica si se cargaron bien. Para cambios mayores, el código fuente completo está en
+este repositorio. Cada cambio subido a la rama recompila el instalador automáticamente
+(GitHub Actions → *Compilar instalador Windows*).
+
+## Opción alternativa: con Python (para desarrollo)
+
 ## 1. Instalar Python (solo la primera vez)
 
 1. Entre en <https://www.python.org/downloads/windows/> y descargue **Python 3.12**,

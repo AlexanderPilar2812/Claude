@@ -2,9 +2,8 @@
 # exactamente como lo haría un usuario. Los resultados se guardan como artefacto.
 name: Prueba en Windows
 
+# Se lanza a mano (pestaña Actions); la compilación del instalador ya ejecuta las pruebas.
 on:
-  push:
-    branches: [claude/epanet-calibration-algorithm-v0cgd7]
   workflow_dispatch:
 
 jobs:

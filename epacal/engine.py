@@ -121,6 +121,24 @@ class EpanetError(RuntimeError):
     pass
 
 
+def _lib_bundled(version: str) -> Optional[str]:
+    """Biblioteca empaquetada con la aplicación (ejecutable de PyInstaller o carpeta
+    ``epacal/lib`` junto al código)."""
+    names = {"2.2": ["epanet22.dll", "libepanet22.so", "libepanet22.dylib"],
+             "2.3": ["epanet2.dll", "libepanet2.so", "libepanet2.dylib"]}[version]
+    roots = []
+    if getattr(sys, "frozen", False):
+        roots.append(os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)),
+                                  "epanet"))
+    roots.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+    for r in roots:
+        for n in names:
+            cand = os.path.join(r, n)
+            if os.path.exists(cand):
+                return cand
+    return None
+
+
 def _lib_from_package(version: str) -> Optional[str]:
     system = platform.system()
     if version == "2.2":
@@ -158,7 +176,7 @@ def _find_library(lib_path: Optional[str] = None, version: Optional[str] = None)
     if order is None:
         raise EpanetError(f"epanet_version no válida: {version} (use 2.2, 2.3 o auto)")
     for v in order:
-        found = _lib_from_package(v)
+        found = _lib_bundled(v) or _lib_from_package(v)
         if found:
             return found
     found = ctypes.util.find_library("epanet22") or ctypes.util.find_library("epanet2")

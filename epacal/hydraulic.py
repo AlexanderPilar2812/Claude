@@ -162,7 +162,8 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                     metric=hc.get("metric", "rmse"), huber_delta=float(hc.get("huber_delta", 1.0)),
                     lib_path=lib, kind_weight={k.upper(): float(v) for k, v in
                                                (hc.get("weights") or {}).items()},
-                    sim_offset=sim_offset, balance=balance, rules=cfg.get("acceptance", []))
+                    sim_offset=sim_offset, balance=balance, rules=cfg.get("acceptance", []),
+                    plugin_dirs=cfg.get("plugin_dirs"))
     x0 = np.array([p.initial for p in params])
 
     # ---- línea base (en serie, también fija la escala de los residuos)

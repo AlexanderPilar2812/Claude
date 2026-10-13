@@ -54,6 +54,11 @@ def run(config_path: str, mode: Optional[str] = None, out_dir: Optional[str] = N
         if isinstance(cfg.get(sec), dict) and "file" in cfg[sec]:
             cfg[sec]["file"] = _abs(base_dir, cfg[sec]["file"])
 
+    # plugins (extensiones por código)
+    from . import plugins
+    cfg["plugin_dirs"] = [_abs(base_dir, d) for d in (cfg.get("plugin_dirs") or [])]
+    plugins.load_plugins(cfg["plugin_dirs"], log)
+
     # biblioteca EPANET: se resuelve una vez y se pasa a todos los procesos
     from . import engine as en
     cfg["epanet_lib"] = en._find_library(_abs(base_dir, cfg.get("epanet_lib")),
@@ -107,4 +112,11 @@ def run(config_path: str, mode: Optional[str] = None, out_dir: Optional[str] = N
                        loss_res, notes)
     log(f"INP final: {final_inp}")
     log(f"Informe:   {rep}")
-    return {"inp": final_inp, "report": rep, "hydraulic": hyd_res, "losses": loss_res}
+    result = {"inp": final_inp, "report": rep, "hydraulic": hyd_res, "losses": loss_res,
+              "out_dir": out_dir}
+    for hook in plugins.RESULT_HOOKS:
+        try:
+            hook(result, cfg, out_dir)
+        except Exception as exc:  # un plugin defectuoso no debe perder la calibración
+            log(f"  aviso: el plugin {getattr(hook, '__name__', hook)} falló: {exc}")
+    return result

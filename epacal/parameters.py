@@ -104,6 +104,11 @@ def build_parameters(cfgs: List[dict], groups: dict, net: NetworkInfo,
                 idx = idx[np.isin(net.link_type[idx], list(en.VALVE_TYPES))]
             elif ptype in ("roughness", "leak_area"):
                 idx = idx[np.isin(net.link_type[idx], [en.EN_PIPE, en.EN_CVPIPE])]
+            from .plugins import PARAMETER_TYPES
+            lt = (PARAMETER_TYPES.get(ptype) or {}).get("link_types")
+            if lt:
+                codes = [k for k, v in en.LINK_TYPES.items() if v in {t.upper() for t in lt}]
+                idx = idx[np.isin(net.link_type[idx], codes)]
             prop = LINK_PARAMS[ptype]
             base = np.array([prj.get_link(int(i) + 1, prop) for i in idx])
         else:
@@ -114,6 +119,11 @@ def build_parameters(cfgs: List[dict], groups: dict, net: NetworkInfo,
                 idx = idx[net.node_type[idx] == en.EN_TANK]
             elif ptype in ("demand_multiplier", "emitter_multiplier"):
                 idx = idx[net.node_type[idx] == en.EN_JUNCTION]
+            from .plugins import PARAMETER_TYPES
+            nt = (PARAMETER_TYPES.get(ptype) or {}).get("node_types")
+            if nt:
+                codes = [k for k, v in en.NODE_TYPES.items() if v in {t.upper() for t in nt}]
+                idx = idx[np.isin(net.node_type[idx], codes)]
             if ptype == "demand_multiplier":
                 base = net.base_demand[idx]
             else:

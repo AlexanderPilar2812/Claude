@@ -37,6 +37,7 @@ class EvalSpec:
     sim_offset: int = 0             # s entre t=0 del INP y el inicio de las observaciones
     balance: Optional[object] = None  # LossBalance: mantiene el objetivo de pérdidas
     rules: Optional[list] = None      # reglas de aceptación (para el modo goal: rules)
+    plugin_dirs: Optional[list] = None  # carpetas de plugins (también en los trabajadores)
 
 
 class Evaluator:
@@ -147,10 +148,13 @@ class Evaluator:
     def objectives(self, sim: np.ndarray, mask: Optional[np.ndarray] = None) -> np.ndarray:
         mask = self.obs.calib_mask if mask is None else mask
         out = []
+        from . import plugins
         for kind in self.spec.objectives:
             rows = self.kind_rows.get(kind, np.array([], int))
             if len(rows) == 0:
-                out.append(0.0)
+                fn = plugins.OBJECTIVES.get(kind)
+                v = float(fn(self, sim, mask)) if fn is not None else 0.0
+                out.append(v if np.isfinite(v) else PENALTY)
                 continue
             o = self.obs.values[rows][:, mask]
             s = sim[rows][:, mask]
@@ -207,6 +211,8 @@ _WORKER: Optional[Evaluator] = None
 
 def init_worker(spec: EvalSpec):
     global _WORKER
+    from . import plugins
+    plugins.load_plugins(spec.plugin_dirs)
     _WORKER = Evaluator(spec)
 
 
@@ -225,11 +231,24 @@ def _worker_eval(args):
     return out
 
 
+_ACTIVE_POOLS: set = set()
+
+
+def shutdown_all() -> None:
+    """Cierra todos los procesos de simulación abiertos (p. ej. al cancelar)."""
+    for p in list(_ACTIVE_POOLS):
+        try:
+            p.close(cancel=True)
+        except Exception:
+            pass
+
+
 class Pool:
     """Ejecuta evaluaciones en serie o en paralelo con la misma interfaz."""
 
     def __init__(self, spec: EvalSpec, n_workers: int = 0):
         self.spec = spec
+        _ACTIVE_POOLS.add(self)
         if n_workers is None or n_workers <= 0:
             n_workers = max(1, (os.cpu_count() or 2) - 1)
         self.n_workers = n_workers
@@ -261,7 +280,17 @@ class Pool:
         chunk = max(1, len(X) // (self.n_workers * 4))
         return list(self.exe.map(_worker_eval, [(x, tuple(want)) for x in X], chunksize=chunk))
 
-    def close(self):
+    def close(self, cancel: bool = False):
+        _ACTIVE_POOLS.discard(self)
         if self.exe is not None:
-            self.exe.shutdown()
-        self.local.close()
+            if cancel:
+                for proc in list(getattr(self.exe, "_processes", {}).values()):
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+            self.exe.shutdown(wait=not cancel, cancel_futures=cancel)
+            self.exe = None
+        if self.local is not None:
+            self.local.close()
+            self.local = None

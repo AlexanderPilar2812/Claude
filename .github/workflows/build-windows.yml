@@ -1,0 +1,111 @@
+# Compila la aplicación de escritorio EPACAL para Windows y su instalador.
+# Resultado: EPACAL-Setup-<versión>.exe en la pestaña "Releases" del repositorio
+# y como artefacto de esta ejecución.
+name: Compilar instalador Windows
+
+on:
+  push:
+    branches: [claude/epanet-calibration-algorithm-v0cgd7]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION: "1.1.0"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias
+        shell: cmd
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pillow pytest
+
+      - name: Pruebas automáticas
+        shell: cmd
+        run: python -m pytest -q tests
+
+      - name: Icono y ejecutable (PyInstaller)
+        shell: cmd
+        run: |
+          python packaging\make_icon.py
+          pyinstaller packaging\epacal.spec --noconfirm
+
+      - name: Prueba del ejecutable (calibración sin ventanas)
+        shell: cmd
+        run: |
+          start "" /wait dist\EPACAL\EPACAL.exe examples\caso_tanque\config.yaml --salida %RUNNER_TEMP%\smoke --log %RUNNER_TEMP%\smoke.log
+          type %RUNNER_TEMP%\smoke.log
+          if not exist %RUNNER_TEMP%\smoke\informe_calibracion.html exit /b 1
+
+      - name: Prueba de la interfaz
+        shell: cmd
+        run: |
+          start "" /wait dist\EPACAL\EPACAL.exe --selftest-gui %RUNNER_TEMP%\gui.txt
+          type %RUNNER_TEMP%\gui.txt
+          findstr /C:"GUI OK" %RUNNER_TEMP%\gui.txt
+
+      - name: Captura de pantalla de la aplicación
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $p = Start-Process -PassThru "dist\EPACAL\EPACAL.exe"
+          Start-Sleep -Seconds 15
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$env:RUNNER_TEMP\captura_windows.png")
+          Stop-Process $p -Force
+
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y | Out-Null }
+          & $iscc /DAppVersion=$env:APP_VERSION packaging\installer.iss
+          Get-ChildItem Output
+
+      - name: Prueba del instalador (instalación silenciosa + ejemplo instalado)
+        shell: cmd
+        run: |
+          start "" /wait Output\EPACAL-Setup-%APP_VERSION%.exe /VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /NORESTART
+          dir "%LOCALAPPDATA%\Programs\EPACAL\EPACAL.exe"
+          dir "%USERPROFILE%\Documents\EPACAL\ejemplos"
+          start "" /wait "%LOCALAPPDATA%\Programs\EPACAL\EPACAL.exe" "%USERPROFILE%\Documents\EPACAL\ejemplos\caso_tanque\config.yaml" --log %RUNNER_TEMP%\installed.log
+          type %RUNNER_TEMP%\installed.log
+          if not exist "%USERPROFILE%\Documents\EPACAL\ejemplos\caso_tanque\resultados\informe_calibracion.html" exit /b 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EPACAL-instalador-windows
+          path: |
+            Output/*.exe
+            ${{ runner.temp }}/captura_windows.png
+            ${{ runner.temp }}/*.log
+            ${{ runner.temp }}/gui.txt
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: epacal-v${{ env.APP_VERSION }}
+          name: EPACAL ${{ env.APP_VERSION }} (Windows)
+          target_commitish: ${{ github.sha }}
+          files: Output/EPACAL-Setup-${{ env.APP_VERSION }}.exe
+          body: |
+            Instalador de EPACAL para Windows 10/11 (64 bits). No necesita Python ni permisos de administrador.
+            1. Descargue EPACAL-Setup-${{ env.APP_VERSION }}.exe y ejecútelo.
+            2. Abra EPACAL desde el escritorio o el menú Inicio.
+            3. Ejemplos y plugins: Documentos\EPACAL.
