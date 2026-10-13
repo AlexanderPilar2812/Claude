@@ -1,0 +1,39 @@
+[    0.0s]   plugin cargado: /home/user/Claude/plugins/ejemplo_plugin.py
+[    0.7s] EPANET 2.2 (/usr/local/lib/python3.13/dist-packages/wntr/epanet/libepanet/linux-x64/libepanet22.so)
+[    0.8s] [hidráulica] red: 1294 nodos, 1303 líneas | sensores: 17 (FLOW, PRESSURE) | instantes: 576 (calibración 576, validación 0)
+[    0.8s]   parámetro VRP_3949706:valve_setting: valve_setting/offset sobre 1 elementos, rango [-8, 3], inicial 0
+[    0.8s]   parámetro TCV_P11:valve_setting: valve_setting/absolute sobre 1 elementos, rango [0, 3000], inicial 2.24
+[    0.8s]   parámetro DEM_Z3949706:demand_multiplier: demand_multiplier/multiplier sobre 521 elementos, rango [0.4, 1.3], inicial 1
+[    0.8s]   parámetro DEM_RESTO:demand_multiplier: demand_multiplier/multiplier sobre 769 elementos, rango [0.7, 1.3], inicial 1
+[    2.3s]   modelo original: PRESSURE=7.102, FLOW=3.576
+[    2.3s]   procesos de simulación en paralelo: 3
+[    5.5s]   sensibilidad VRP_3949706:valve_setting: CSS relativa 0.229
+[    5.5s]   sensibilidad TCV_P11:valve_setting: CSS relativa 0.396
+[    5.5s]   sensibilidad DEM_Z3949706:demand_multiplier: CSS relativa 1.000
+[    5.5s]   sensibilidad DEM_RESTO:demand_multiplier: CSS relativa 0.618
+[    5.5s] [hidráulica] NSGA-II: población 24, generaciones 16, 4 variables
+[   29.3s]   gen   1 | evals    48 | frente   8 | HV 81.343 | mejor por objetivo [5.1062 2.7197]
+[   41.0s]   gen   2 | evals    72 | frente   8 | HV 81.855 | mejor por objetivo [5.0391 2.7177]
+[   53.3s]   gen   3 | evals    96 | frente   4 | HV 82.833 | mejor por objetivo [5.0355 2.6691]
+[   64.9s]   gen   4 | evals   120 | frente   6 | HV 83.097 | mejor por objetivo [5.0226 2.6535]
+[   76.7s]   gen   5 | evals   144 | frente   6 | HV 83.272 | mejor por objetivo [4.997  2.6535]
+[   88.3s]   gen   6 | evals   168 | frente   8 | HV 83.286 | mejor por objetivo [4.9969 2.6527]
+[   99.9s]   gen   7 | evals   192 | frente   5 | HV 83.29 | mejor por objetivo [4.9969 2.6527]
+[  111.8s]   gen   8 | evals   216 | frente   6 | HV 83.419 | mejor por objetivo [4.9775 2.6524]
+[  123.8s]   gen   9 | evals   240 | frente  11 | HV 83.422 | mejor por objetivo [4.9775 2.6524]
+[  135.8s]   gen  10 | evals   264 | frente   6 | HV 83.48 | mejor por objetivo [4.9775 2.6493]
+[  147.2s]   gen  11 | evals   288 | frente   6 | HV 83.488 | mejor por objetivo [4.9773 2.6487]
+[  158.7s]   gen  12 | evals   312 | frente   7 | HV 83.507 | mejor por objetivo [4.9744 2.6487]
+[  170.1s]   gen  13 | evals   336 | frente   9 | HV 83.512 | mejor por objetivo [4.9735 2.6487]
+[  181.4s]   gen  14 | evals   360 | frente  10 | HV 83.513 | mejor por objetivo [4.9735 2.6487]
+[  192.8s]   gen  15 | evals   384 | frente  15 | HV 83.523 | mejor por objetivo [4.9724 2.6485]
+[  204.6s]   gen  16 | evals   408 | frente  19 | HV 83.563 | mejor por objetivo [4.966  2.6485]
+[  210.2s]   frente de Pareto: 12 soluciones; elegida #6 (PRESSURE=4.979, FLOW=2.666, reglas 0/2)
+[  241.8s]   refinamiento local: coste 0.999994 -> 0.996192 (10 iteraciones, estado 0)
+[  243.3s]   se acepta la solución refinada
+[  265.1s]   12 INP del frente de Pareto en /home/user/Claude/casos/VDM/calib_v7/resultados/pareto
+[  265.1s]   INP calibrado: /home/user/Claude/casos/VDM/calib_v7/resultados/VDM_v7_calibrado_hidraulica.inp
+[  265.1s] [hidráulica] terminado en 247 s, 875 simulaciones
+[  266.7s]   métricas finales comparadas con el modelo original: PRESSURE 7.102 -> 4.985, FLOW 3.576 -> 2.652
+[  269.4s] INP final: /home/user/Claude/casos/VDM/calib_v7/resultados/VDM_v7_CALIBRADO.inp
+[  269.4s] Informe:   /home/user/Claude/casos/VDM/calib_v7/resultados/informe_calibracion.html
