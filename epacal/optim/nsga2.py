@@ -157,7 +157,8 @@ def nsga2(evaluate: Callable[[np.ndarray], tuple], n_var: int, pop_size: int = 6
           n_gen: int = 60, seeds: Optional[np.ndarray] = None, eta_c: float = 15,
           eta_m: float = 20, pc: float = 0.9, pm: Optional[float] = None,
           seed: int = 1, stall_gens: int = 15, stall_tol: float = 1e-4,
-          max_evals: Optional[int] = None, log: Callable[[str], None] = print) -> NSGA2Result:
+          max_evals: Optional[int] = None, log: Callable[[str], None] = print,
+          stop_check: Optional[Callable[[int], bool]] = None) -> NSGA2Result:
     """``evaluate(U) -> (F[n, m], CV[n])`` evalúa un lote de individuos."""
     rng = np.random.default_rng(seed)
     pm = 1.0 / n_var if pm is None else pm
@@ -235,6 +236,9 @@ def nsga2(evaluate: Callable[[np.ndarray], tuple], n_var: int, pop_size: int = 6
             stall += 1
         if stall >= stall_gens:
             log(f"  parada por estancamiento del hipervolumen ({stall_gens} generaciones)")
+            break
+        if stop_check is not None and stop_check(gen):
+            log("  parada: objetivo alcanzado (todas las reglas de aceptación se cumplen)")
             break
         if max_evals and n_evals >= max_evals:
             log("  parada por número máximo de evaluaciones")

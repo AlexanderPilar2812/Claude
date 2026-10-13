@@ -1,0 +1,24 @@
+{
+  "inp": "/home/user/Claude/casos/ZP02EC/resultados_dias_tipo/ZP02EC_calibrado_perdidas.inp",
+  "convergido": true,
+  "iteraciones": 4,
+  "metodo": "emitters",
+  "exponente": 0.5,
+  "sectores": [
+    {
+      "dma": "ZP02EC",
+      "objetivo_tipo": "percent",
+      "objetivo": 17.0,
+      "logrado": 16.999275149834453,
+      "perdidas_pct_volumen": 16.999275149834453,
+      "volumen_entrada_m3": 5733.013591934391,
+      "volumen_perdidas_m3": 974.5707548703346,
+      "volumen_consumo_m3": 4758.440425501546,
+      "nudos": 1528,
+      "nudos_con_fuga": 1528,
+      "k_total": 0.7581925340078509,
+      "presion_media": 65.5634478143997,
+      "iteraciones": 4
+    }
+  ]
+}

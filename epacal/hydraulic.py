@@ -152,7 +152,7 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                     metric=hc.get("metric", "rmse"), huber_delta=float(hc.get("huber_delta", 1.0)),
                     lib_path=lib, kind_weight={k.upper(): float(v) for k, v in
                                                (hc.get("weights") or {}).items()},
-                    sim_offset=sim_offset, balance=balance)
+                    sim_offset=sim_offset, balance=balance, rules=cfg.get("acceptance", []))
     x0 = np.array([p.initial for p in params])
 
     # ---- línea base (en serie, también fija la escala de los residuos)
@@ -216,9 +216,23 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
     # ---- 3. NSGA-II
     oc = hc.get("optimizer", {})
 
+    # goal: "pareto" (afinar el frente completo) | "rules" (parar en cuanto una
+    # solución cumple todas las reglas de aceptación: modelo para escenarios, rápido)
+    goal = str(oc.get("goal", "pareto")).lower()
+    want = ("objectives", "rules") if (goal == "rules" and rules) else ("objectives",)
+    state = {"met_gen": None, "gen": 0, "best": (0, 0.0)}
+
     def evaluate(U):
         X = [_phys(params, u, free, x0) for u in U]
-        res = pool.map(X)
+        res = pool.map(X, want=want)
+        if "rules" in want:
+            for d in res:
+                npass, ntot, sc = d["rules"]
+                if d["ok"] and (npass, sc) > state["best"]:
+                    state["best"] = (npass, sc)
+                if d["ok"] and npass == ntot and state["met_gen"] is None:
+                    state["met_gen"] = state["gen"]
+        state["gen"] += 1
         F = np.array([d["objectives"] for d in res])
         CV = np.array([0.0 if d["ok"] else 1.0 for d in res])
         F = np.where(np.isfinite(F), F, PENALTY)
@@ -239,12 +253,19 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
                 n_gen=int(oc.get("n_gen", 40)), seeds=seeds, seed=int(oc.get("seed", 1)),
                 eta_c=float(oc.get("eta_c", 15)), eta_m=float(oc.get("eta_m", 20)),
                 stall_gens=int(oc.get("stall_gens", 12)), max_evals=oc.get("max_evals"),
-                log=log)
+                log=log,
+                stop_check=(lambda g: state["met_gen"] is not None
+                            and g >= int(oc.get("min_gens", 3))) if "rules" in want else None)
+    if "rules" in want:
+        log(f"  reglas: mejor candidato cumple {state['best'][0]}/{len(rules)} "
+            f"(cumplimiento medio {100 * state['best'][1]:.1f} %)"
+            + ("" if state["met_gen"] is not None else
+               " — NINGÚN candidato cumple todas: revise las reglas o los parámetros"))
     feas = np.all(res.F < PENALTY, axis=1)
     PU, PF = res.X[feas], res.F[feas]
     order = np.argsort(PF[:, 0])
     PU, PF = PU[order], PF[order]
-    max_front = int(oc.get("max_front", 30))
+    max_front = int(oc.get("max_front", 12 if goal == "rules" else 30))
     if len(PU) > max_front:  # submuestreo uniforme del frente
         keep = np.unique(np.linspace(0, len(PU) - 1, max_front).round().astype(int))
         PU, PF = PU[keep], PF[keep]
@@ -264,7 +285,10 @@ def run_hydraulic(cfg: dict, inp_file: str, base_dir: str, out_dir: str,
     # ---- 5. refinamiento local
     x_final = x_choice.copy()
     lc = hc.get("local_search", {"enabled": True})
-    if lc.get("enabled", True):
+    skip_ls = goal == "rules" and rules and n_pass[k] == len(rules)
+    if skip_ls:
+        log("  la solución elegida ya cumple todas las reglas: se omite el refinamiento local")
+    if lc.get("enabled", True) and not skip_ls:
         # cada objetivo se escala con su valor en la solución elegida: el gradiente
         # mejora ambos a la vez sin desplazarse a otro punto del frente
         lm_scale.update({o: max(float(v), 1e-9) for o, v in zip(objectives, PF[k])})

@@ -42,7 +42,9 @@ losses:
   dmas:
     ZP02EC:
       target: {type: percent, value: 17}
-      inflow_sensor: "3939065"        # caudalímetro de entrada: patrón = medido − fugas
+      # Días tipo: se conserva el patrón del modelo (día tipo) reducido por las fugas.
+      # Para reproducir la semana medida en vez del día tipo, descomentar:
+      # inflow_sensor: "3939065"
 
 hydraulic:
   objectives: [FLOW, PRESSURE]
@@ -55,10 +57,12 @@ hydraulic:
     - {group: TCV_ESTRANG, type: valve_setting, mode: multiplier, bounds: [0.05, 5.0], log: true}
     - {group: DEPOSITO,    type: reservoir_head, bounds: [-4.0, 4.0]}
   sensitivity: {enabled: true, freeze_below: 0.01}
-  optimizer: {pop_size: 40, n_gen: 30, seed: 1, stall_gens: 8}
+  # goal: rules -> para en cuanto una solución cumple TODAS las reglas de aceptación
+  # (modelo para escenarios, rápido).  goal: pareto -> afina el frente completo.
+  optimizer: {goal: rules, pop_size: 16, n_gen: 15, min_gens: 3, seed: 1, stall_gens: 5}
   selection: knee
   local_search: {enabled: true, max_iter: 12}
-  loss_balance: {enabled: true, n_inner: 2}
+  loss_balance: {enabled: true, n_inner: 1}
 
 acceptance:
   - {name: CAUDAL,       kind: FLOW,     error: relative, threshold: 15,  timesteps_pct: 75, points_pct: 100}

@@ -35,6 +35,7 @@ class EvalSpec:
     kind_weight: Optional[Dict[str, float]] = None
     sim_offset: int = 0             # s entre t=0 del INP y el inicio de las observaciones
     balance: Optional[object] = None  # LossBalance: mantiene el objetivo de pérdidas
+    rules: Optional[list] = None      # reglas de aceptación (para el modo goal: rules)
 
 
 class Evaluator:
@@ -154,6 +155,13 @@ class Evaluator:
             out.append(PENALTY if not np.isfinite(v) else v)
         return np.array(out)
 
+    def rules_status(self, sim: np.ndarray) -> tuple:
+        """(reglas cumplidas, total, cumplimiento medio) en el periodo de calibración."""
+        from .metrics import evaluate_rules, rules_score
+        rr = evaluate_rules(self.spec.rules or [], self.obs.sensors, self.obs.values, sim,
+                            self.obs.calib_mask)
+        return sum(r.passed for r in rr), len(rr), rules_score(rr)
+
     def residuals(self, sim: np.ndarray, x: Optional[np.ndarray] = None) -> np.ndarray:
         """Vector de residuos escalados para mínimos cuadrados (Levenberg-Marquardt).
         sum(r^2) = sum_k  w_k * (RMSE_k / escala_k)^2  (+ regularización)."""
@@ -206,6 +214,8 @@ def _worker_eval(args):
         out["residuals"] = _WORKER.residuals(sim, np.asarray(x))
     if "sim" in want:
         out["sim"] = sim
+    if "rules" in want:
+        out["rules"] = _WORKER.rules_status(sim)
     return out
 
 
@@ -238,6 +248,8 @@ class Pool:
                     d["residuals"] = self.local.residuals(sim, x)
                 if "sim" in want:
                     d["sim"] = sim
+                if "rules" in want:
+                    d["rules"] = self.local.rules_status(sim)
                 res.append(d)
             return res
         chunk = max(1, len(X) // (self.n_workers * 4))

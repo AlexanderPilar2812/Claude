@@ -153,6 +153,29 @@ hasta cumplir el objetivo y la tolerancia del patrón. Por defecto, el caudal de
 de referencia es la demanda del modelo original, que es la misma hipótesis que usa
 Giswater. Si se dispone del caudalímetro, puede usarse la serie medida (`inflow_file`).
 
+## Modo rápido para modelos de escenarios (`goal: rules`)
+
+Si el modelo se va a usar para simular escenarios (válvulas nuevas, cambios de
+consigna, tramos nuevos) con **días tipo**, no hace falta afinar el error al
+máximo: basta con que quede dentro de los límites de aceptación.
+
+```yaml
+hydraulic:
+  optimizer: {goal: rules, pop_size: 16, n_gen: 15, min_gens: 3}
+  loss_balance: {enabled: true, n_inner: 1}
+```
+
+- El NSGA-II **se detiene en cuanto una solución cumple todas las reglas** de
+  `acceptance` (tras `min_gens` generaciones como mínimo).
+- Si la solución elegida ya cumple las reglas, no se hace el refinamiento local.
+- Se re-simulan menos soluciones del frente y el balance de pérdidas hace una sola
+  corrección por evaluación.
+- Con días tipo se mantiene el patrón del modelo (sin `inflow_sensor`), reducido
+  por las fugas. `inflow_sensor` sólo es necesario para reproducir una semana medida.
+
+En el caso ZP02EC (1 529 nudos, 14 sensores), el modo rápido tarda unos 2 minutos,
+frente a 25 minutos con `goal: pareto`, y el ajuste de presión es el mismo.
+
 ## Pruebas
 
 ```bash
