@@ -156,6 +156,34 @@ hasta cumplir el objetivo y la tolerancia del patrón. Por defecto, el caudal de
 de referencia es la demanda del modelo original, que es la misma hipótesis que usa
 Giswater. Si se dispone del caudalímetro, puede usarse la serie medida (`inflow_file`).
 
+## Calibración del nivel de tanques
+
+Los sensores de nivel (`type: LEVEL`) de un **tanque (TANK)** se comparan con el
+nivel simulado sobre la solera: cota piezométrica − cota del tanque. Ojo: la
+propiedad `EN_TANKLEVEL` de EPANET devuelve el nivel inicial durante la simulación,
+así que no sirve para esta comparación. Parámetros específicos:
+
+```yaml
+groups:
+  TANQUE: {select: {ids: [T1]}}
+hydraulic:
+  objectives: [LEVEL, PRESSURE, FLOW]
+  parameters:
+    - {group: TANQUE, type: tank_diameter, bounds: [10, 40]}   # área útil
+    - {group: TANQUE, type: tank_level,    bounds: [0.5, 6.5]} # nivel inicial
+    - {group: TANQUE, type: elevation_offset, bounds: [-1, 1]} # cota de solera
+    - {group: TCV_LLENADO, type: valve_setting, bounds: [0, 60]}
+acceptance:
+  - {name: NIVEL, kind: LEVEL, error: absolute, threshold: 0.2, timesteps_pct: 80, points_pct: 100}
+```
+
+El caso `examples/caso_tanque` tiene solución conocida. El calibrador recupera el
+diámetro (23,8 m frente a 24 reales), el nivel inicial (2,99 frente a 3,00 m), la K
+de la TCV de llenado (18,1 frente a 18) y la rugosidad (1,89 frente a 1,90). El error
+del nivel queda en 0,014 m. Si el depósito se modela como **embalse con patrón de
+nivel** (caso ZP02EC), el parámetro adecuado es `reservoir_head`: desplaza el nivel
+medido en metros.
+
 ## Objetivo CAMBIO (parsimonia)
 
 `objectives: [PRESSURE, CAMBIO]` sustituye un objetivo que no aporta información

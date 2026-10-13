@@ -19,7 +19,6 @@ import os
 import sys
 
 import numpy as np
-import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from epacal import engine as en  # noqa: E402
@@ -62,7 +61,7 @@ def write_inp(path, g, v, title):
         x, y = g["coords"][n]
         L.append(f" {n}\t{x:.1f}\t{y:.1f}")
     L += [" R1\t-900\t800", " NIN\t-600\t800", " NLL\t-450\t800", " T1\t-300\t800", "", "[END]", ""]
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(L))
 
 
@@ -94,7 +93,7 @@ def main(out_dir):
     lvl = np.array(rec["T1"])
     # ficheros .dat de calibración (id  hora  valor), como los de EPANET/Giswater
     def dat(name, ids, noise, rel=False):
-        with open(os.path.join(out_dir, name), "w") as fh:
+        with open(os.path.join(out_dir, name), "w", encoding="utf-8") as fh:
             for s in ids:
                 v = np.array(rec[s])
                 v = v * (1 + rng.normal(0, noise, len(v))) if rel else v + rng.normal(0, noise, len(v))
@@ -103,7 +102,7 @@ def main(out_dir):
     dat("calibr_nivel.dat", ["T1"], 0.02)
     dat("calibr_caudal.dat", ["PIN", "PMAIN"], 0.015, rel=True)
     dat("calibr_presion.dat", sens_p, 0.15)
-    with open(os.path.join(out_dir, "verdad.json"), "w") as fh:
+    with open(os.path.join(out_dir, "verdad.json"), "w", encoding="utf-8") as fh:
         json.dump({"verdad": TRUE, "inicial": ORIG,
                    "nivel_tanque_min_max": [float(lvl.min()), float(lvl.max())]}, fh, indent=2)
     print(f"Caso tanque en {out_dir}: nivel real entre {lvl.min():.2f} y {lvl.max():.2f} m")

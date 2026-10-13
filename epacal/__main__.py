@@ -12,6 +12,12 @@ from .workflow import run
 
 
 def main(argv=None):
+    # la consola de Windows (cp1252/cp850) no admite todos los caracteres de los mensajes
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(prog="epacal", description="Calibración de modelos EPANET")
     ap.add_argument("config", help="fichero YAML/JSON de configuración")
     ap.add_argument("--modo", choices=["full", "hydraulic", "losses"], default=None)

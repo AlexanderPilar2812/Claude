@@ -73,11 +73,11 @@ def caso(tmp_path_factory):
 
 def _cfg(d, **over):
     import yaml
-    with open(os.path.join(ROOT, "examples", "caso_sintetico", "config.yaml")) as fh:
+    with open(os.path.join(ROOT, "examples", "caso_sintetico", "config.yaml"), encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     cfg.update(over)
     p = os.path.join(d, "config_test.yaml")
-    with open(p, "w") as fh:
+    with open(p, "w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh)
     return p
 
@@ -98,12 +98,12 @@ def test_hydraulic_recovers_metal_roughness(caso):
     from epacal.workflow import run
     import yaml
     p = _cfg(caso, workers=2)
-    with open(p) as fh:
+    with open(p, encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     cfg["hydraulic"]["optimizer"] = {"pop_size": 16, "n_gen": 8, "seed": 2, "stall_gens": 4}
     cfg["hydraulic"]["local_search"] = {"enabled": True, "max_iter": 6}
     cfg["workflow"] = {"mode": "full", "coupled_rounds": 1}
-    with open(p, "w") as fh:
+    with open(p, "w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh)
     res = run(p, None, os.path.join(caso, "res_full"), log=lambda m: None)
     h = res["hydraulic"]
@@ -143,14 +143,14 @@ def test_tank_level_calibration(tmp_path):
     from examples.generar_caso_tanque import main as gen_tanque
     from epacal.workflow import run
     gen_tanque(str(tmp_path))
-    with open(os.path.join(ROOT, "examples", "caso_tanque", "config.yaml")) as fh:
+    with open(os.path.join(ROOT, "examples", "caso_tanque", "config.yaml"), encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     cfg["hydraulic"]["optimizer"] = {"goal": "pareto", "pop_size": 16, "n_gen": 8, "seed": 1,
                                      "stall_gens": 4, "max_front": 6}
     cfg["hydraulic"]["local_search"] = {"enabled": True, "max_iter": 8}
     cfg["workers"] = 2
     p = os.path.join(tmp_path, "config.yaml")
-    with open(p, "w") as fh:
+    with open(p, "w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh)
     res = run(p, None, os.path.join(tmp_path, "res"), log=lambda m: None)
     h = res["hydraulic"]

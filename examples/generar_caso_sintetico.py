@@ -131,7 +131,7 @@ def write_inp(path, g, rough, tcv_k, pattern, emitters=None, title="caso"):
         L.append(f" {n}\t{x:.1f}\t{y:.1f}")
     L.append(" R1\t-150\t800")
     L += ["", "[END]", ""]
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(L))
 
 
@@ -222,7 +222,7 @@ def main(out_dir):
     pd.DataFrame({"timestamp": [start + pd.Timedelta(seconds=int(t)) for t in T],
                   "caudal_m3h": np.round(inflow * (1 + rng.normal(0, 0.01, len(T))), 3)}
                  ).to_csv(os.path.join(out_dir, "caudal_entrada.csv"), index=False)
-    with open(os.path.join(out_dir, "verdad.json"), "w") as fh:
+    with open(os.path.join(out_dir, "verdad.json"), "w", encoding="utf-8") as fh:
         json.dump({"rugosidad_y_tcv": TRUE, "originales": ORIG,
                    "perdidas_pct_real": true_pct, "k_emisores_total": k_total}, fh, indent=2)
     print(f"Caso generado en {out_dir}: fugas reales {true_pct:.2f} %, "

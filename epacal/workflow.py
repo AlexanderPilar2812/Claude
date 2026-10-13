@@ -16,11 +16,19 @@ from .report import build_report
 
 
 def load_config(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as fh:
-        if path.lower().endswith(".json"):
-            import json
-            return json.load(fh)
-        return yaml.safe_load(fh)
+    """Lee la configuración YAML/JSON en UTF-8 (o en ANSI/cp1252 si se guardó así
+    con el Bloc de notas de Windows)."""
+    raw = open(path, "rb").read()
+    for enc in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if path.lower().endswith(".json"):
+        import json
+        return json.loads(text)
+    return yaml.safe_load(text)
 
 
 def _abs(base_dir, p):
