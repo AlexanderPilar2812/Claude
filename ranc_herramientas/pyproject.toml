@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ranc"
+version = "0.2.0"
+description = "Herramientas para campañas de medición, línea base y modelación hidráulica del proyecto RANC"
+requires-python = ">=3.10"
+dependencies = ["pandas", "numpy", "openpyxl", "matplotlib", "pyyaml"]
+
+[project.optional-dependencies]
+modelo = ["wntr"]
+pruebas = ["pytest"]
+
+[tool.setuptools]
+packages = ["ranc"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,15 @@
+# Entorno para las herramientas RANC.  Crear con:  conda env create -f environment.yml
+name: ranc
+channels: [conda-forge]
+dependencies:
+  - python=3.12
+  - pandas
+  - numpy
+  - openpyxl
+  - matplotlib
+  - pyyaml
+  - pytest
+  - pip
+  - pip:
+      - wntr      # motor EPANET, para las herramientas de pérdidas y escenarios
+      - epyt

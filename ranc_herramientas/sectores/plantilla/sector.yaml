@@ -1,0 +1,67 @@
+# Plantilla de sector. Copiar esta carpeta con el nombre del sector, poner los archivos crudos
+# en crudos/ y completar lo que está entre < >. Las rutas son relativas a este archivo.
+sector: <Nombre del sector>
+codigo: <LB1>
+campana: <Línea base y calibración, mes y año>
+
+# Ventana de análisis en hora local. Si se omite, se usa el tramo común a todos los equipos.
+ventana:
+  inicio: 2026-01-01 00:00
+  fin: 2026-01-08 00:00
+
+puntos:
+  - id: Q1
+    nombre: <Caudalímetro de entrada>
+    magnitud: caudal
+    rol: entrada                 # entrada o salida del sector
+    archivo: crudos/<archivo>.csv   # admite una lista si hay varias descargas
+    # q_max_ls: 60               # opcional: tope físico de caudal
+  - id: P1
+    nombre: <Punto de presión>
+    magnitud: presion
+    peso: 100                    # abonados que representa, para la presión ponderada
+    archivo: crudos/<archivo>.csv
+    # offset_mca: 1.31           # opcional: fija el offset a mano
+
+# Umbrales (opcional; estos son los valores por defecto)
+# parametros:
+#   paso_min: 15
+#   q_negativo_ls: 1.0           # caudales menores de -1 L/s se invalidan
+#   factor_q_max: 5.0            # caudales mayores de 5 x P95 se invalidan
+#   relleno_presion_min: 90      # huecos de presión que se interpolan
+#   fraccion_corte: 0.2          # corte = presión bajo el 20 % de su mediana
+#   corte_min_mca: 2.0
+
+# Comprobación de lo pegado en un Excel contra los crudos (opcional)
+# verificar_pegado:
+#   - {punto: Q1, excel: <libro>.xlsx, hoja: Caudal, col_tiempo: B, col_valor: C, fila_inicio: 3}
+
+# Línea base (método IWA de caudal mínimo nocturno)
+linea_base:
+  conexiones: 1000
+  conexiones_no_residenciales: 0
+  nu_lh: 1.4                     # uso nocturno residencial, L/h por conexión
+  cnli_lh: 0.2
+  cnlo_lh: 0.1
+  consumo_nocturno_nr_lh: 0.0    # total no residencial, L/h
+  longitud_red_km: 10.0
+  longitud_acometida_m: 4
+  n1: 1.5
+  icf: 1.5
+  pfc: 0.85                      # criterio del Modelo_CMN; 1.0 para la fórmula IWA
+  percentil: 20
+  # excluir_noches: ["2026-01-05"]
+  # excel_cmn: <Modelo_CMN>.xlsx   # se contrasta contra este libro
+
+# Datos para el modelo: patrones, .dat del calibrador y CSV de Giswater
+modelo:
+  t0: 2026-01-02 00:00           # 00:00 del día siguiente al inicio de la campaña
+  duracion_h: 168
+  expl_id: 901
+  patron_demanda: {id: XX-D-7D, descripcion: Demanda del sector 7 dias CMH}   # id de 16 caracteres como máximo
+  # tanques:
+  #   - {punto: N1, id_patron: XX-NIV, cota_sensor: 1410.04, forma: absoluta}
+  #   - {punto: N1, id_patron: XX-NIV, cota_sensor: 1410.04, forma: multiplicador, cota_solera: 1409.84}
+  # mapeo:                       # id de campo -> id en el modelo, para los .dat
+  #   Q1: "3939065"
+  #   P1: "VN3935401"

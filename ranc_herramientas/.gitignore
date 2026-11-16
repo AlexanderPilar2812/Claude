@@ -1,0 +1,10 @@
+# Los datos de los sectores no se suben: el repositorio es público.
+sectores/*
+!sectores/plantilla/
+sectores/plantilla/crudos/*
+!sectores/plantilla/crudos/.gitkeep
+salidas/
+ejemplos/*.CSV
+ejemplos/*.csv
+ejemplos/modelo/salidas/
+*.egg-info/
