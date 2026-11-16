@@ -1,0 +1,20 @@
+# Escenarios de explotación para  python -m ranc escenarios modelo.inp escenarios.yaml
+criterios:                 # opcional; estos son los valores por defecto
+  presion_min: 15.0        # mca, servicio (Norma Técnica AyA 2017, 4.7.1)
+  presion_max: 50.0        # mca, estática
+  presion_max_aislada: 70.0
+  velocidad_max: 3.0       # m/s
+  fmd: 1.2                 # factor de máximo diario, para el instante QMD + incendio
+  incendio_caudal_ls: 32.0 # zona residencial (Reglamento de Bomberos 2023, 14.4)
+  incendio_instante: qmd   # qmd, punta o medio
+  presion_residual_min: 10.5   # mca en el hidrante (104 kPa)
+
+incendio:                  # un escenario por hidrante
+  - {nodo: N24}
+  - {nodo: N6, caudal_ls: 32}
+
+contingencia:              # un escenario por avería; se evalúa en el caudal punta
+  - {cerrar: PL1}
+  - {cerrar: [PA4], nombre: Avería en PA4}
+
+horizonte: {factor: 1.20, anos: 20}   # crecimiento de la demanda
